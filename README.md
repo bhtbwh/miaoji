@@ -23,7 +23,7 @@
 
 ## 新电脑快速开始
 
-下面所有命令都可以在刚打开的 PowerShell 里直接运行，默认项目目录是：
+下面命令都可以在刚打开的 PowerShell 里直接运行；默认安装到：
 
 ```powershell
 $HOME\Documents\秒记
@@ -31,30 +31,43 @@ $HOME\Documents\秒记
 
 如果你把项目放到了别的位置，把命令里的 `$HOME\Documents\秒记` 换成实际路径即可。
 
-把项目复制到新电脑后，真实转写的一键首次运行是：
+首次安装并启动真实转写：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\first-run.ps1"
+if (!(Test-Path "$HOME\Documents\秒记\.git")) { git clone https://github.com/bhtbwh/miaoji.git "$HOME\Documents\秒记" } else { git -C "$HOME\Documents\秒记" pull }; powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\first-run.ps1"
 ```
 
 它会做这些事：
 
+- 从 GitHub 下载项目到 `$HOME\Documents\秒记`
 - 创建 `.venv`
 - 安装 Python 依赖
 - 生成手机 HTTPS 证书
 - 下载并初始化 `FunASR paraformer-zh-streaming`
 - 启动真实转写服务
 
-如果只是先验证页面、手机访问、麦克风权限，不下载真实模型：
+快速验证页面、手机访问、麦克风权限，不下载真实模型：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\first-run.ps1" -Mock
+if (!(Test-Path "$HOME\Documents\秒记\.git")) { git clone https://github.com/bhtbwh/miaoji.git "$HOME\Documents\秒记" } else { git -C "$HOME\Documents\秒记" pull }; powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\first-run.ps1" -Mock
 ```
 
-如果只想安装依赖，不启动：
+首次只安装依赖和证书，不启动：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\setup-windows.ps1"
+if (!(Test-Path "$HOME\Documents\秒记\.git")) { git clone https://github.com/bhtbwh/miaoji.git "$HOME\Documents\秒记" } else { git -C "$HOME\Documents\秒记" pull }; powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\setup-windows.ps1"
+```
+
+日常启动：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
+```
+
+更新到 GitHub 最新版本：
+
+```powershell
+git -C "$HOME\Documents\秒记" pull
 ```
 
 脚本会打印两个地址：
@@ -62,12 +75,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scri
 ```text
 Desktop URL: https://localhost:8765
 Phone URL:   https://<电脑局域网IP>:8765
-```
-
-后续日常使用，真实转写启动：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
 ```
 
 网络或模型缓存不稳定时，先用 `first-run.ps1 -Mock` 跑通页面和手机录音权限。
