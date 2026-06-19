@@ -14,6 +14,7 @@ REQUIRED_PATHS = [
     "server/asr.py",
     "server/refine.py",
     "server/storage.py",
+    "server/summary.py",
     "server/transcript.py",
     "web/index.html",
     "web/app.js",
@@ -40,9 +41,12 @@ REQUIRED_REQUIREMENTS = {
     "fastapi",
     "uvicorn",
     "funasr",
+    "httpx",
     "modelscope",
     "websockets",
 }
+
+SUMMARY_KEYS = ["会议摘要", "决策事项", "待办事项", "每个人负责什么", "风险/问题"]
 
 FORBIDDEN_REQUIREMENTS = {
     "openai-whisper",
@@ -88,6 +92,23 @@ def main() -> int:
     for required in ("audio.wav", "transcript.txt", "meeting.json"):
         if required not in storage_text:
             errors.append(f"server/storage.py 必须保留 {required} 存储契约")
+    for required in ("rolling_summary", "rolling_summary_history", "summary_status"):
+        if required not in storage_text:
+            errors.append(f"server/storage.py 必须保留 {required} 摘要存储字段")
+    for key in SUMMARY_KEYS:
+        if key not in storage_text:
+            errors.append(f"server/storage.py 必须保留摘要固定字段: {key}")
+
+    summary_text = (ROOT / "server" / "summary.py").read_text(encoding="utf-8")
+    for required in ("SummaryWorker", "chat/completions", "MIAOJI_SUMMARY_API_KEY", "summary_min_new_chars"):
+        if required not in summary_text:
+            errors.append(f"server/summary.py 缺少摘要约束: {required}")
+    if "item.is_final" not in summary_text:
+        errors.append("server/summary.py 必须只读取正式 transcript segment 做摘要")
+
+    app_text = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
+    if "SummaryWorker" not in app_text or '"type": "summary"' not in summary_text:
+        errors.append("server/app.py 必须启动 SummaryWorker，并通过 WebSocket 发送 summary 消息")
 
     if errors:
         print("Architecture guard failed:")

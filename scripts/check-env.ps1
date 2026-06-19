@@ -36,6 +36,10 @@ Add-Check "Certificate" ((Test-Path "certs\localhost.pem") -and (Test-Path "cert
 Add-Check "PhoneRootCA" (Test-Path "certs\miaoji-root-ca.cer") "certs\miaoji-root-ca.cer"
 Add-Check "LAN IP" ($lanIp -ne "127.0.0.1") $lanIp
 Add-Check "ModelCache" (Test-Path $cacheDir) $cacheDir
+Add-Check "SummaryEnabled" ($env:MIAOJI_SUMMARY_ENABLED -in @("1", "true", "yes", "on")) "MIAOJI_SUMMARY_ENABLED=$env:MIAOJI_SUMMARY_ENABLED"
+Add-Check "SummaryAPIKey" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_SUMMARY_API_KEY)) "MIAOJI_SUMMARY_API_KEY is only needed when realtime summary is enabled"
+Add-Check "SummaryBaseURL" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_SUMMARY_BASE_URL)) ($(if ($env:MIAOJI_SUMMARY_BASE_URL) { $env:MIAOJI_SUMMARY_BASE_URL } else { "default: https://ark.cn-beijing.volces.com/api/coding/v3" }))
+Add-Check "SummaryModel" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_SUMMARY_MODEL)) ($(if ($env:MIAOJI_SUMMARY_MODEL) { $env:MIAOJI_SUMMARY_MODEL } else { "default: doubao-seed-2.0-lite" }))
 
 $oldErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"

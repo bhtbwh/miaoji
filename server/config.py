@@ -27,6 +27,14 @@ class Settings:
     refine_asr_revision: str = "v2.0.4"
     refine_vad_model: str = "fsmn-vad"
     refine_punc_model: str = "ct-punc"
+    summary_enabled: bool = False
+    summary_base_url: str = "https://ark.cn-beijing.volces.com/api/coding/v3"
+    summary_model: str = "doubao-seed-2.0-lite"
+    summary_api_key: str = ""
+    summary_interval_seconds: float = 15
+    summary_min_new_chars: int = 80
+    summary_timeout_seconds: float = 45
+    summary_mock: bool = False
     mock_asr: bool = False
 
 
@@ -47,5 +55,13 @@ def get_settings() -> Settings:
         refine_asr_revision=os.getenv("MIAOJI_REFINE_ASR_REVISION", "v2.0.4"),
         refine_vad_model=os.getenv("MIAOJI_REFINE_VAD_MODEL", "fsmn-vad"),
         refine_punc_model=os.getenv("MIAOJI_REFINE_PUNC_MODEL", "ct-punc"),
+        summary_enabled=os.getenv("MIAOJI_SUMMARY_ENABLED", "").lower() in {"1", "true", "yes", "on"},
+        summary_base_url=os.getenv("MIAOJI_SUMMARY_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3"),
+        summary_model=os.getenv("MIAOJI_SUMMARY_MODEL", "doubao-seed-2.0-lite"),
+        summary_api_key=os.getenv("MIAOJI_SUMMARY_API_KEY", ""),
+        summary_interval_seconds=float(os.getenv("MIAOJI_SUMMARY_INTERVAL_SECONDS", "15")),
+        summary_min_new_chars=int(os.getenv("MIAOJI_SUMMARY_MIN_NEW_CHARS", "80")),
+        summary_timeout_seconds=float(os.getenv("MIAOJI_SUMMARY_TIMEOUT_SECONDS", "45")),
+        summary_mock=os.getenv("MIAOJI_SUMMARY_MOCK", "").lower() in {"1", "true", "yes", "on"},
         mock_asr=os.getenv("MIAOJI_MOCK_ASR", "").lower() in {"1", "true", "yes", "on"},
     )

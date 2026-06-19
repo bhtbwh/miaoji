@@ -3,7 +3,7 @@
 一个自用的本地会议记录 App/PWA。第一阶段已实现核心链路：
 
 ```text
-手机/电脑浏览器录音 -> WebSocket 发到本地电脑 -> FunASR 流式转写 -> 页面实时显示 -> 本地保存 WAV 和逐字稿
+手机/电脑浏览器录音 -> WebSocket 发到本地电脑 -> FunASR 流式转写 -> 页面实时显示 -> 可选滚动摘要 -> 本地保存 WAV、逐字稿和会议 JSON
 ```
 
 ## 当前功能
@@ -15,6 +15,7 @@
 - 保存会议音频：`data/meetings/<会议ID>/audio.wav`
 - 保存逐字稿：`data/meetings/<会议ID>/transcript.txt`
 - 保存会议元数据：`data/meetings/<会议ID>/meeting.json`
+- 可选实时滚动摘要：会议摘要、决策事项、待办事项、每个人负责什么、风险/问题
 - PWA manifest 和离线静态资源缓存
 - Windows 新电脑一键安装、启动、自检
 - 架构守卫脚本，防止核心链路漂移
@@ -76,6 +77,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start.ps1
 - FunASR 是否可 import
 - OpenSSL 和 HTTPS 证书
 - 局域网 IP
+- 摘要开关、模型、API Key 提示
+
+摘要配置缺失只会提示，不会阻止实时转写启动。
 
 ## 本机开发启动
 
@@ -150,9 +154,23 @@ $env:MIAOJI_ASR_REVISION = "v2.0.4"
 
 AMD 显卡环境先建议 CPU 跑通稳定性。后面若要尝试 DirectML/ROCm，需要单独评估 PyTorch 和 FunASR 兼容性。
 
-## 下一阶段接口预留
+## 实时摘要配置
 
-`meeting.json` 已包含滚动摘要状态：
+实时摘要默认关闭。要启用火山方舟 OpenAI-compatible 接口，在本机 PowerShell 设置环境变量：
+
+```powershell
+$env:MIAOJI_SUMMARY_ENABLED = "1"
+$env:MIAOJI_SUMMARY_BASE_URL = "https://ark.cn-beijing.volces.com/api/coding/v3"
+$env:MIAOJI_SUMMARY_MODEL = "doubao-seed-2.0-lite"
+$env:MIAOJI_SUMMARY_API_KEY = "<你的本机 API Key>"
+$env:MIAOJI_SUMMARY_INTERVAL_SECONDS = "15"
+$env:MIAOJI_SUMMARY_MIN_NEW_CHARS = "80"
+.\scripts\start.ps1
+```
+
+密钥只从本机环境变量读取，不要写进仓库、脚本或日志。
+
+`meeting.json` 会持续保存滚动摘要状态：
 
 ```json
 {
@@ -164,7 +182,7 @@ AMD 显卡环境先建议 CPU 跑通稳定性。后面若要尝试 DirectML/ROCm
 }
 ```
 
-第二阶段可以增加一个摘要 worker：每 1-3 分钟读取新增 transcript segment，调用 LM Studio 或讯飞星辰模型，持续更新这个结构。
+还会保存 `rolling_summary_history` 和 `summary_status`。当前没有做多人说话人分离；“每个人负责什么”只在逐字稿里明确出现姓名、称呼或负责人时提取，不靠模型猜。
 
 ## 防漂移验证
 

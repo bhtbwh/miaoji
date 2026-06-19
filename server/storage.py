@@ -9,6 +9,22 @@ from typing import Any
 from uuid import uuid4
 
 
+SUMMARY_KEYS = ["会议摘要", "决策事项", "待办事项", "每个人负责什么", "风险/问题"]
+
+
+def default_rolling_summary() -> dict[str, list[Any]]:
+    return {key: [] for key in SUMMARY_KEYS}
+
+
+def default_summary_status() -> dict[str, Any]:
+    return {
+        "state": "idle",
+        "last_updated_at": None,
+        "last_error": "",
+        "model": "",
+    }
+
+
 @dataclass
 class TranscriptSegment:
     index: int
@@ -27,15 +43,9 @@ class MeetingRecord:
     sample_rate: int = 16_000
     duration_seconds: float = 0
     transcript: list[TranscriptSegment] = field(default_factory=list)
-    rolling_summary: dict[str, list[Any]] = field(
-        default_factory=lambda: {
-            "会议摘要": [],
-            "决策事项": [],
-            "待办事项": [],
-            "每个人负责什么": [],
-            "风险/问题": [],
-        }
-    )
+    rolling_summary: dict[str, list[Any]] = field(default_factory=default_rolling_summary)
+    rolling_summary_history: list[dict[str, Any]] = field(default_factory=list)
+    summary_status: dict[str, Any] = field(default_factory=default_summary_status)
 
 
 class MeetingStore:
@@ -78,6 +88,9 @@ class MeetingStore:
         meta_path = self._meeting_dir(meeting_id) / "meeting.json"
         data = json.loads(meta_path.read_text(encoding="utf-8"))
         data["transcript"] = [TranscriptSegment(**item) for item in data.get("transcript", [])]
+        data["rolling_summary"] = normalize_rolling_summary(data.get("rolling_summary"))
+        data.setdefault("rolling_summary_history", [])
+        data.setdefault("summary_status", default_summary_status())
         return MeetingRecord(**data)
 
     def save(self, record: MeetingRecord) -> None:
@@ -98,6 +111,19 @@ class MeetingStore:
         if any(part in meeting_id for part in ("/", "\\", "..")):
             raise ValueError("Invalid meeting id")
         return self.data_dir / meeting_id
+
+
+def normalize_rolling_summary(value: Any) -> dict[str, list[Any]]:
+    normalized = default_rolling_summary()
+    if not isinstance(value, dict):
+        return normalized
+    for key in SUMMARY_KEYS:
+        item = value.get(key, [])
+        if isinstance(item, list):
+            normalized[key] = item
+        elif item:
+            normalized[key] = [item]
+    return normalized
 
 
 class MeetingAudioWriter:

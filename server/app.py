@@ -14,6 +14,7 @@ from .asr import TranscriptUpdate, create_transcriber
 from .config import Settings, get_settings
 from .refine import OfflineTranscriptRefiner
 from .storage import MeetingAudioWriter, MeetingRecord, MeetingStore, TranscriptSegment
+from .summary import SummaryWorker
 from .transcript import TranscriptAssembler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -35,6 +36,7 @@ def health() -> dict[str, object]:
         "sample_rate": settings.sample_rate,
         "asr_model": settings.asr_model,
         "mock_asr": settings.mock_asr,
+        "summary_enabled": settings.summary_enabled,
         "data_dir": str(settings.data_dir),
     }
 
@@ -89,19 +91,26 @@ async def record_audio(websocket: WebSocket) -> None:
     title = websocket.query_params.get("title") or None
     record = store.create_meeting(title, settings.sample_rate)
     writer = MeetingAudioWriter(store.audio_path(record.id), settings.sample_rate)
+    save_lock = asyncio.Lock()
+    send_lock = asyncio.Lock()
+
+    async def send_json(payload: dict[str, object]) -> None:
+        async with send_lock:
+            await websocket.send_json(payload)
 
     try:
         transcriber = create_transcriber(settings)
     except Exception as exc:
         writer.close()
         logger.exception("Failed to initialize ASR")
-        await websocket.send_json({"type": "error", "message": f"ASR 初始化失败：{exc}"})
+        await send_json({"type": "error", "message": f"ASR 初始化失败：{exc}"})
         await websocket.close(code=1011)
         return
 
     assembler = TranscriptAssembler(settings)
+    summary_worker = SummaryWorker(settings, store, record, save_lock, send_json)
 
-    await websocket.send_json(
+    await send_json(
         {
             "type": "meeting_started",
             "meeting": {
@@ -112,8 +121,8 @@ async def record_audio(websocket: WebSocket) -> None:
             },
         }
     )
-
-    save_lock = asyncio.Lock()
+    summary_worker.start()
+    await summary_worker.send_current()
 
     async def persist_update(update: TranscriptUpdate) -> TranscriptSegment:
         async with save_lock:
@@ -133,7 +142,7 @@ async def record_audio(websocket: WebSocket) -> None:
     async def handle_updates(updates: list[TranscriptUpdate], force: bool = False) -> None:
         for update in assembler.accept_many(updates, force=force):
             segment = await persist_update(update)
-            await websocket.send_json(
+            await send_json(
                 {
                     "type": "transcript",
                     "segment": {
@@ -168,16 +177,19 @@ async def record_audio(websocket: WebSocket) -> None:
     except Exception:
         logger.exception("Recorder websocket failed")
         with suppress(RuntimeError):
-            await websocket.send_json({"type": "error", "message": "录音连接异常，已尽量保存当前内容。"})
+            await send_json({"type": "error", "message": "录音连接异常，已尽量保存当前内容。"})
     finally:
         with suppress(Exception):
             await handle_updates(await transcriber.close(), force=True)
         writer.close()
-        record.status = "finished"
-        record.duration_seconds = writer.duration_seconds
-        store.save(record)
+        async with save_lock:
+            record.status = "finished"
+            record.duration_seconds = writer.duration_seconds
+            store.save(record)
+        with suppress(Exception):
+            await summary_worker.finalize()
         with suppress(RuntimeError):
-            await websocket.send_json(
+            await send_json(
                 {
                     "type": "meeting_finished",
                     "meeting_id": record.id,

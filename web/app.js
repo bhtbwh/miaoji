@@ -17,6 +17,9 @@ const state = {
   meetingId: "",
   stopping: false,
   draftElement: null,
+  currentSummary: null,
+  summaryStatus: { state: "idle", last_updated_at: null, last_error: "", model: "" },
+  summaryHistoryCount: 0,
 };
 
 const els = {
@@ -31,11 +34,13 @@ const els = {
   transcriptList: document.querySelector("#transcriptList"),
   segmentCount: document.querySelector("#segmentCount"),
   summaryGrid: document.querySelector("#summaryGrid"),
+  summaryState: document.querySelector("#summaryState"),
+  summaryMeta: document.querySelector("#summaryMeta"),
   meetingList: document.querySelector("#meetingList"),
   refreshMeetingsBtn: document.querySelector("#refreshMeetingsBtn"),
 };
 
-renderSummaryPlaceholders();
+renderSummary();
 renderTranscriptEmpty();
 loadMeetings();
 registerServiceWorker();
@@ -93,8 +98,12 @@ async function startRecording() {
     state.segmentCount = 0;
     state.meetingId = "";
     state.draftElement = null;
+    state.currentSummary = null;
+    state.summaryStatus = { state: "idle", last_updated_at: null, last_error: "", model: "" };
+    state.summaryHistoryCount = 0;
     els.transcriptList.innerHTML = "";
     renderTranscriptEmpty();
+    renderSummary();
     updateControls();
     tickDuration();
     state.durationTimer = window.setInterval(tickDuration, 500);
@@ -123,6 +132,8 @@ function bindSocket(socket) {
       if (payload.duration_seconds) {
         els.durationText.textContent = formatDuration(payload.duration_seconds * 1000);
       }
+    } else if (payload.type === "summary") {
+      updateSummary(payload);
     } else if (payload.type === "meeting_finished") {
       setStatus("会议已保存。");
       loadMeetings();
@@ -314,14 +325,82 @@ function renderTranscriptEmpty() {
   els.segmentCount.textContent = "0 段";
 }
 
-function renderSummaryPlaceholders() {
+function updateSummary(payload) {
+  state.currentSummary = payload.summary || null;
+  state.summaryStatus = payload.summary_status || state.summaryStatus;
+  state.summaryHistoryCount = payload.history_count || 0;
+  renderSummary();
+}
+
+function renderSummary() {
+  const status = state.summaryStatus || {};
+  const stateLabel = formatSummaryState(status.state);
+  els.summaryState.textContent = stateLabel;
+  els.summaryState.className = status.state === "error" ? "summary-state error" : "summary-state";
+
+  const details = [];
+  if (status.model) details.push(status.model);
+  if (status.last_updated_at) details.push(`更新：${formatDateTime(status.last_updated_at)}`);
+  if (state.summaryHistoryCount) details.push(`${state.summaryHistoryCount} 次更新`);
+  if (status.last_error) details.push(`错误：${status.last_error}`);
+  els.summaryMeta.textContent = details.length ? details.join(" · ") : "录音中会按新增正式转写滚动更新。";
+  els.summaryMeta.classList.toggle("error", Boolean(status.last_error));
+
   els.summaryGrid.innerHTML = "";
+  const summary = normalizeSummary(state.currentSummary);
   for (const key of SUMMARY_KEYS) {
     const item = document.createElement("div");
     item.className = "summary-item";
-    item.innerHTML = `<strong>${key}</strong><p>第一阶段先跑通实时转写，下一阶段会每 1-3 分钟滚动更新这里。</p>`;
+    const values = summary[key];
+    const title = document.createElement("strong");
+    title.textContent = key;
+    item.append(title);
+    if (!values.length) {
+      const empty = document.createElement("p");
+      empty.textContent = key === "每个人负责什么" ? "未识别到明确姓名或负责人。" : "暂无。";
+      item.append(empty);
+    } else {
+      const list = document.createElement("ul");
+      for (const value of values) {
+        const row = document.createElement("li");
+        row.textContent = stringifySummaryItem(value);
+        list.append(row);
+      }
+      item.append(list);
+    }
     els.summaryGrid.append(item);
   }
+}
+
+function normalizeSummary(summary) {
+  const normalized = {};
+  for (const key of SUMMARY_KEYS) {
+    const value = summary && summary[key];
+    normalized[key] = Array.isArray(value) ? value : value ? [value] : [];
+  }
+  return normalized;
+}
+
+function stringifySummaryItem(value) {
+  if (typeof value === "string") return value;
+  if (value && typeof value === "object") {
+    return Object.entries(value)
+      .map(([key, item]) => `${key}：${item}`)
+      .join("；");
+  }
+  return String(value);
+}
+
+function formatSummaryState(value) {
+  if (value === "running") return "摘要中";
+  if (value === "error") return "异常";
+  return "待更新";
+}
+
+function formatDateTime(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleTimeString();
 }
 
 async function loadMeetings() {

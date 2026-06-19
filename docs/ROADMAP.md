@@ -37,15 +37,17 @@ python scripts\smoke-ws.py "ws://127.0.0.1:8765/ws/record?title=stability" 7200
 
 目标：
 
-- 每 1-3 分钟处理新增转写片段。
-- 维护结构化滚动摘要状态。
-- 摘要模型可选 LM Studio 或讯飞星辰 Coding Plan。
+- 每 15 秒检查新增正式转写片段，累计约 80 字以上才调用摘要模型。
+- 维护结构化滚动摘要状态和更新历史。
+- 摘要模型使用 OpenAI-compatible 接口，可接火山方舟、LM Studio 或其他兼容服务。
 
 约束：
 
 - 摘要 worker 不阻塞录音和 ASR。
 - 摘要失败不影响 transcript 保存。
 - 输入来自 `meeting.json` transcript 或 `transcript.txt`。
+- 固定输出五类：会议摘要、决策事项、待办事项、每个人负责什么、风险/问题。
+- 当前不做多人说话人分离；负责人只在逐字稿明确出现姓名、称呼或负责人时提取。
 
 ## 第三阶段：会后总结
 
