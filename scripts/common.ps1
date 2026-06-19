@@ -31,8 +31,29 @@ function Get-LanIPv4 {
       $_.IPAddress -notlike "127.*" -and
       $_.IPAddress -notlike "169.254.*" -and
       $_.PrefixOrigin -ne "WellKnown"
-    } |
+    }
+
+  $privateAddresses = $addresses |
+    Where-Object {
+      $_.IPAddress -like "10.*" -or
+      $_.IPAddress -like "192.168.*" -or
+      $_.IPAddress -match "^172\.(1[6-9]|2[0-9]|3[0-1])\."
+    }
+
+  $preferredAddresses = $privateAddresses |
+    Where-Object { $_.InterfaceAlias -match "Wi-Fi|WLAN|Wireless|以太网|Ethernet" } |
     Sort-Object -Property InterfaceMetric, InterfaceIndex
+
+  if ($preferredAddresses) {
+    return $preferredAddresses[0].IPAddress
+  }
+
+  $privateAddresses = $privateAddresses | Sort-Object -Property InterfaceMetric, InterfaceIndex
+  if ($privateAddresses) {
+    return $privateAddresses[0].IPAddress
+  }
+
+  $addresses = $addresses | Sort-Object -Property InterfaceMetric, InterfaceIndex
 
   if ($addresses) {
     return $addresses[0].IPAddress
@@ -73,8 +94,9 @@ function Write-AccessUrls {
   Write-Host "Phone URL:   ${scheme}://${LanIp}:$Port"
   Write-Host ""
   if ($Https) {
+    $root = Get-ProjectRoot
     Write-Host "If iPhone refuses the certificate warning, install the local root CA:"
-    Write-Host "  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-cert-download.ps1"
+    Write-Host "  powershell -NoProfile -ExecutionPolicy Bypass -File `"$root\scripts\start-cert-download.ps1`""
   } else {
     Write-Host "Note: phone browsers usually require HTTPS for microphone access."
   }
