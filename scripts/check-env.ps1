@@ -34,11 +34,16 @@ Add-Check "OpenSSL" $hasOpenSsl "Needed for phone HTTPS certificate"
 Add-Check "Certificate" ((Test-Path "certs\localhost.pem") -and (Test-Path "certs\localhost-key.pem")) "certs\localhost.pem"
 Add-Check "LAN IP" ($lanIp -ne "127.0.0.1") $lanIp
 
+$oldErrorActionPreference = $ErrorActionPreference
+$ErrorActionPreference = "Continue"
+
 $importCheck = & $python -c "import fastapi, uvicorn, numpy, websockets; print('ok')" 2>&1
 Add-Check "CoreDeps" ($LASTEXITCODE -eq 0) (($importCheck | Out-String).Trim())
 
 $funasrCheck = & $python -c "import funasr; print('ok')" 2>&1
 Add-Check "FunASR" ($LASTEXITCODE -eq 0) (($funasrCheck | Out-String).Trim())
+
+$ErrorActionPreference = $oldErrorActionPreference
 
 Write-Section "Environment check"
 $checks | Format-Table -AutoSize
