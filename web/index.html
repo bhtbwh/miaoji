@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#20515a" />
+    <title>秒记</title>
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" href="/icons/icon.svg" />
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">本地实时会议转写</p>
+          <h1>秒记</h1>
+        </div>
+        <div class="connection-pill" id="connectionState">未连接</div>
+      </header>
+
+      <main>
+        <section class="recorder-panel" aria-label="录音控制">
+          <div class="meeting-title-row">
+            <label for="meetingTitle">会议标题</label>
+            <input id="meetingTitle" maxlength="80" placeholder="例如：周会 / 客户访谈 / 需求评审" />
+          </div>
+
+          <div class="meter-wrap" aria-hidden="true">
+            <div class="meter">
+              <div id="levelBar"></div>
+            </div>
+            <span id="durationText">00:00:00</span>
+          </div>
+
+          <div class="control-row">
+            <button id="startBtn" class="primary-btn" type="button">
+              <span class="icon-dot"></span>
+              开始录音
+            </button>
+            <button id="pauseBtn" class="ghost-btn" type="button" disabled>暂停</button>
+            <button id="stopBtn" class="danger-btn" type="button" disabled>结束</button>
+          </div>
+
+          <p class="status-line" id="statusLine">准备就绪。手机访问电脑局域网地址后，点开始即可录音。</p>
+        </section>
+
+        <section class="workspace-grid">
+          <article class="transcript-pane">
+            <div class="section-heading">
+              <h2>实时转写</h2>
+              <span id="segmentCount">0 段</span>
+            </div>
+            <div id="transcriptList" class="transcript-list" aria-live="polite"></div>
+          </article>
+
+          <aside class="summary-pane">
+            <div class="section-heading">
+              <h2>滚动摘要</h2>
+              <span>第二阶段</span>
+            </div>
+            <div class="summary-grid" id="summaryGrid"></div>
+          </aside>
+        </section>
+
+        <section class="meetings-pane">
+          <div class="section-heading">
+            <h2>历史会议</h2>
+            <button id="refreshMeetingsBtn" class="small-btn" type="button">刷新</button>
+          </div>
+          <div id="meetingList" class="meeting-list"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="/app.js" type="module"></script>
+  </body>
+</html>
