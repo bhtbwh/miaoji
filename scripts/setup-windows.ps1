@@ -7,6 +7,7 @@ param(
 
 $root = Get-ProjectRoot
 Set-Location $root
+$cacheDir = Set-ProjectModelCache -Root $root
 
 Write-Section "Check Python"
 $hasPython = Test-CommandAvailable -Name "python"
@@ -46,6 +47,7 @@ if (-not $hasOpenSsl) {
 
 $lanIp = Get-LanIPv4
 Write-Host "Detected LAN IP: $lanIp"
+Write-Host "Model cache: $cacheDir"
 
 if (-not $SkipCert) {
   Write-Section "Generate local HTTPS certificate"

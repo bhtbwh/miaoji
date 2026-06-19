@@ -9,11 +9,17 @@ param(
 $root = Get-ProjectRoot
 Set-Location $root
 $python = Get-ProjectPython -Root $root
+$cacheDir = Join-Path $root "data\modelscope_cache"
+New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+$env:MIAOJI_MODELSCOPE_CACHE = $cacheDir
+$env:MODELSCOPE_CACHE = $cacheDir
+$env:MODELSCOPE_CACHE_HOME = $cacheDir
 
 Write-Section "Download and initialize FunASR model"
 Write-Host "Model:    $Model"
 Write-Host "Revision: $Revision"
 Write-Host "Device:   $Device"
+Write-Host "Cache:    $cacheDir"
 
 $code = @"
 from funasr import AutoModel

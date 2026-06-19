@@ -9,6 +9,7 @@ param(
 
 $root = Get-ProjectRoot
 Set-Location $root
+Set-ProjectModelCache -Root $root | Out-Null
 
 Write-Section "First run setup"
 & "$PSScriptRoot\setup-windows.ps1"

@@ -14,6 +14,17 @@ function Get-ProjectPython {
   return "python"
 }
 
+function Set-ProjectModelCache {
+  param([string]$Root)
+
+  $cacheDir = Join-Path $Root "data\modelscope_cache"
+  New-Item -ItemType Directory -Force -Path $cacheDir | Out-Null
+  $env:MIAOJI_MODELSCOPE_CACHE = $cacheDir
+  $env:MODELSCOPE_CACHE = $cacheDir
+  $env:MODELSCOPE_CACHE_HOME = $cacheDir
+  return $cacheDir
+}
+
 function Get-LanIPv4 {
   $addresses = Get-NetIPAddress -AddressFamily IPv4 -ErrorAction SilentlyContinue |
     Where-Object {

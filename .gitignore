@@ -4,3 +4,4 @@ __pycache__/
 certs/
 data/meetings/*
 !data/meetings/.gitkeep
+data/modelscope_cache/

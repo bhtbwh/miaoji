@@ -6,6 +6,7 @@ param(
 
 $root = Get-ProjectRoot
 Set-Location $root
+$cacheDir = Set-ProjectModelCache -Root $root
 $python = Get-ProjectPython -Root $root
 $lanIp = Get-LanIPv4
 
@@ -33,6 +34,7 @@ $hasOpenSsl = Test-CommandAvailable -Name "openssl"
 Add-Check "OpenSSL" $hasOpenSsl "Needed for phone HTTPS certificate"
 Add-Check "Certificate" ((Test-Path "certs\localhost.pem") -and (Test-Path "certs\localhost-key.pem")) "certs\localhost.pem"
 Add-Check "LAN IP" ($lanIp -ne "127.0.0.1") $lanIp
+Add-Check "ModelCache" (Test-Path $cacheDir) $cacheDir
 
 $oldErrorActionPreference = $ErrorActionPreference
 $ErrorActionPreference = "Continue"

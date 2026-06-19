@@ -8,6 +8,7 @@ param(
 
 $root = Get-ProjectRoot
 Set-Location $root
+$cacheDir = Set-ProjectModelCache -Root $root
 
 $python = Get-ProjectPython -Root $root
 $lanIp = Get-LanIPv4
@@ -33,6 +34,7 @@ if ($MockAsr) {
 }
 
 Write-Section "Start Miaoji"
+Write-Host "Model cache: $cacheDir"
 Write-AccessUrls -Port $Port -Https $useHttps -LanIp $lanIp
 
 $argsList = @("-m", "uvicorn", "server.app:app", "--host", "0.0.0.0", "--port", "$Port")

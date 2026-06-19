@@ -25,6 +25,11 @@ class Settings:
 
 
 def get_settings() -> Settings:
+    cache_dir = Path(os.getenv("MIAOJI_MODELSCOPE_CACHE", ROOT_DIR / "data" / "modelscope_cache"))
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    os.environ.setdefault("MODELSCOPE_CACHE", str(cache_dir))
+    os.environ.setdefault("MODELSCOPE_CACHE_HOME", str(cache_dir))
+
     return Settings(
         data_dir=Path(os.getenv("MIAOJI_DATA_DIR", ROOT_DIR / "data" / "meetings")),
         asr_model=os.getenv("MIAOJI_ASR_MODEL", "paraformer-zh-streaming"),
