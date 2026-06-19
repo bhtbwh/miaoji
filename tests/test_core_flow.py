@@ -14,7 +14,8 @@ from fastapi.testclient import TestClient
 
 from server.asr import TranscriptUpdate
 from server.config import get_settings
-from server.storage import MeetingStore, TranscriptSegment, default_rolling_summary
+from server.diarization import DiarizationWorker
+from server.storage import MeetingStore, SpeakerSegment, TranscriptSegment, default_rolling_summary
 from server.summary import SummaryWorker
 from server.transcript import TranscriptAssembler, merge_fragment
 
@@ -49,13 +50,41 @@ class FakeSummaryClient:
         return self.response
 
 
+class FakeDiarizationClient:
+    def __init__(self, response: list[SpeakerSegment] | None = None, error: Exception | None = None) -> None:
+        self.response = response or [
+            SpeakerSegment("Speaker 1", 0.0, 0.5),
+            SpeakerSegment("Speaker 2", 0.5, 1.0),
+        ]
+        self.error = error
+        self.calls: list[Path] = []
+
+    async def diarize(self, audio_path: Path, output_dir: Path) -> list[SpeakerSegment]:
+        self.calls.append(audio_path)
+        if self.error:
+            raise self.error
+        return self.response
+
+
 class CoreFlowTest(unittest.TestCase):
+    def setUp(self) -> None:
+        for name in (
+            "MIAOJI_DATA_DIR",
+            "MIAOJI_MOCK_ASR",
+            "MIAOJI_SUMMARY_ENABLED",
+            "MIAOJI_SUMMARY_MOCK",
+            "MIAOJI_SUMMARY_MIN_NEW_CHARS",
+            "MIAOJI_SUMMARY_INTERVAL_SECONDS",
+            "MIAOJI_TRANSCRIPT_MIN_CHARS",
+            "MIAOJI_DIARIZATION_MOCK",
+            "MIAOJI_DIARIZATION_COMMAND",
+        ):
+            os.environ.pop(name, None)
+
     def test_mock_recording_flow(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             os.environ["MIAOJI_MOCK_ASR"] = "1"
             os.environ["MIAOJI_DATA_DIR"] = temp_dir
-            os.environ.pop("MIAOJI_SUMMARY_ENABLED", None)
-            os.environ.pop("MIAOJI_SUMMARY_MOCK", None)
 
             import server.config
             import server.app
@@ -101,6 +130,8 @@ class CoreFlowTest(unittest.TestCase):
             self.assertIn("rolling_summary", saved)
             self.assertIn("rolling_summary_history", saved)
             self.assertIn("summary_status", saved)
+            self.assertIn("speaker_segments", saved)
+            self.assertIn("speaker_status", saved)
 
     def test_mock_recording_flow_sends_summary_message(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -142,6 +173,44 @@ class CoreFlowTest(unittest.TestCase):
                         break
                 else:
                     self.fail("meeting_finished was not sent")
+
+    def test_mock_recording_flow_can_diarize_after_meeting(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["MIAOJI_MOCK_ASR"] = "1"
+            os.environ["MIAOJI_DIARIZATION_MOCK"] = "1"
+            os.environ["MIAOJI_DATA_DIR"] = temp_dir
+
+            import server.config
+            import server.app
+
+            importlib.reload(server.config)
+            app_module = importlib.reload(server.app)
+            client = TestClient(app_module.app)
+
+            pcm_second = b"\x00\x00" * 16_000
+            with client.websocket_connect("/ws/record?title=diarize") as websocket:
+                meeting_id = websocket.receive_json()["meeting"]["id"]
+                websocket.send_bytes(pcm_second)
+                websocket.receive_json()
+                websocket.send_text(json.dumps({"type": "stop"}))
+                for _ in range(4):
+                    message = websocket.receive_json()
+                    if message["type"] == "meeting_finished":
+                        break
+
+            response = client.post(f"/api/meetings/{meeting_id}/diarize")
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["speaker_status"]["state"], "done")
+            self.assertGreaterEqual(payload["speaker_segments"], 1)
+
+            saved = json.loads((Path(temp_dir) / meeting_id / "meeting.json").read_text(encoding="utf-8"))
+            self.assertEqual(saved["speaker_status"]["state"], "done")
+            self.assertGreaterEqual(len(saved["speaker_segments"]), 1)
+
+            transcript = client.get(f"/api/meetings/{meeting_id}/transcript.md").text
+            self.assertIn("[Speaker", transcript)
 
     def test_streaming_fragments_are_assembled(self) -> None:
         class SettingsStub:
@@ -277,6 +346,93 @@ class CoreFlowTest(unittest.TestCase):
                 self.assertEqual(sent[-1]["summary"]["会议摘要"], ["旧摘要"])
 
         asyncio.run(scenario())
+
+    def test_diarization_missing_audio_returns_error_without_transcript_change(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["MIAOJI_DATA_DIR"] = temp_dir
+            os.environ["MIAOJI_DIARIZATION_MOCK"] = "1"
+
+            import server.config
+            import server.app
+
+            importlib.reload(server.config)
+            app_module = importlib.reload(server.app)
+            client = TestClient(app_module.app)
+            record = app_module.store.create_meeting("missing-audio", 16_000)
+            record.transcript.append(TranscriptSegment(0, "保留这段转写。", True, 0.1))
+            app_module.store.save(record)
+
+            response = client.post(f"/api/meetings/{record.id}/diarize")
+
+            self.assertEqual(response.status_code, 404)
+            saved = app_module.store.get_meeting(record.id)
+            self.assertEqual(saved.transcript[0].text, "保留这段转写。")
+            self.assertEqual(saved.speaker_segments, [])
+
+    def test_diarization_worker_updates_speaker_segments(self) -> None:
+        async def scenario() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                settings = replace(
+                    get_settings(),
+                    data_dir=Path(temp_dir),
+                    diarization_mock=True,
+                )
+                store = MeetingStore(settings.data_dir)
+                record = store.create_meeting("speaker-success", settings.sample_rate)
+                store.audio_path(record.id).write_bytes(make_silent_wav_bytes())
+                worker = DiarizationWorker(settings, store, record, FakeDiarizationClient())
+
+                updated = await worker.run()
+
+                self.assertTrue(updated)
+                saved = store.get_meeting(record.id)
+                self.assertEqual(saved.speaker_status["state"], "done")
+                self.assertEqual(saved.speaker_segments[0].speaker, "Speaker 1")
+
+        asyncio.run(scenario())
+
+    def test_diarization_worker_failure_preserves_old_segments(self) -> None:
+        async def scenario() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                settings = replace(
+                    get_settings(),
+                    data_dir=Path(temp_dir),
+                    diarization_mock=True,
+                )
+                store = MeetingStore(settings.data_dir)
+                record = store.create_meeting("speaker-error", settings.sample_rate)
+                store.audio_path(record.id).write_bytes(make_silent_wav_bytes())
+                record.speaker_segments = [SpeakerSegment("Speaker 1", 0.0, 1.0)]
+                store.save(record)
+                worker = DiarizationWorker(
+                    settings,
+                    store,
+                    record,
+                    FakeDiarizationClient(error=RuntimeError("diarization failed")),
+                )
+
+                updated = await worker.run()
+
+                self.assertFalse(updated)
+                saved = store.get_meeting(record.id)
+                self.assertEqual(saved.speaker_segments[0].speaker, "Speaker 1")
+                self.assertEqual(saved.speaker_status["state"], "error")
+                self.assertIn("diarization failed", saved.speaker_status["last_error"])
+
+        asyncio.run(scenario())
+
+
+def make_silent_wav_bytes() -> bytes:
+    import io
+    import wave
+
+    buffer = io.BytesIO()
+    with wave.open(buffer, "wb") as wav:
+        wav.setnchannels(1)
+        wav.setsampwidth(2)
+        wav.setframerate(16_000)
+        wav.writeframes(b"\x00\x00" * 16_000)
+    return buffer.getvalue()
 
 
 if __name__ == "__main__":

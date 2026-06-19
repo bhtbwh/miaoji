@@ -17,6 +17,7 @@ from .storage import (
     SUMMARY_KEYS,
     default_summary_status,
     normalize_rolling_summary,
+    transcript_line,
 )
 
 logger = logging.getLogger(__name__)
@@ -136,7 +137,9 @@ class SummaryWorker:
             end_index = new_segments[-1].index
             previous_summary = copy.deepcopy(normalize_rolling_summary(self.record.rolling_summary))
             context_segments = self.record.transcript[max(0, start_index - 8) :]
-            transcript_context = "\n".join(item.text for item in context_segments if item.text).strip()
+            transcript_context = "\n".join(
+                transcript_line(self.record, item) for item in context_segments if item.text
+            ).strip()
             self.record.summary_status = {
                 **default_summary_status(),
                 "state": "running",
@@ -254,7 +257,8 @@ def build_system_prompt() -> str:
         "你会收到当前摘要状态和新增逐字稿，请在保留重要旧信息的基础上滚动更新。"
         "不要编造没有在逐字稿中出现的信息。"
         "“每个人负责什么”只能在文本明确出现姓名、称呼或负责人时填写；"
-        "如果只是不同人轮流说话但没有身份信息，不要猜测说话人。"
+        "如果上下文包含 Speaker 1、Speaker 2 等编号，可以使用这些编号；"
+        "不要把 Speaker 编号猜成真实姓名。"
     )
 
 

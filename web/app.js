@@ -418,12 +418,18 @@ async function loadMeetings() {
       const duration = formatDuration((meeting.duration_seconds || 0) * 1000);
       row.innerHTML = `
         <a href="/api/meetings/${meeting.id}/transcript.md" target="_blank" rel="noreferrer"></a>
-        <div class="meeting-meta">${meeting.created_at} · ${duration} · ${meeting.segments} 段 · ${meeting.status}</div>
-        <button class="small-btn refine-btn" type="button">会后精转</button>
+        <div class="meeting-meta">${meeting.created_at} · ${duration} · ${meeting.segments} 段 · ${meeting.status} · ${formatSpeakerStatus(meeting)}</div>
+        <div class="meeting-actions">
+          <button class="small-btn refine-btn" type="button">会后精转</button>
+          <button class="small-btn diarize-btn" type="button">说话人分离</button>
+        </div>
       `;
       row.querySelector("a").textContent = meeting.title;
       row.querySelector(".refine-btn").addEventListener("click", (event) => {
         refineMeeting(meeting.id, event.currentTarget);
+      });
+      row.querySelector(".diarize-btn").addEventListener("click", (event) => {
+        diarizeMeeting(meeting.id, event.currentTarget);
       });
       els.meetingList.append(row);
     }
@@ -450,6 +456,36 @@ async function refineMeeting(meetingId, button) {
   } finally {
     button.disabled = false;
   }
+}
+
+async function diarizeMeeting(meetingId, button) {
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "分离中";
+  try {
+    const response = await fetch(`/api/meetings/${meetingId}/diarize`, { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      const detail = payload.detail || payload.speaker_status?.last_error || "说话人分离失败";
+      throw new Error(detail);
+    }
+    button.textContent = "已分离";
+    await loadMeetings();
+  } catch (error) {
+    button.textContent = oldText;
+    setStatus(`说话人分离失败：${error.message || error}`, true);
+    await loadMeetings();
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function formatSpeakerStatus(meeting) {
+  const status = meeting.speaker_status || {};
+  if (status.state === "done") return `${meeting.speaker_segments || 0} 段说话人`;
+  if (status.state === "running") return "说话人分离中";
+  if (status.state === "error") return "说话人分离异常";
+  return "未分离说话人";
 }
 
 function tickDuration() {

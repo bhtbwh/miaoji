@@ -7,13 +7,14 @@ from contextlib import suppress
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 
 from .asr import TranscriptUpdate, create_transcriber
 from .config import Settings, get_settings
+from .diarization import DiarizationWorker
 from .refine import OfflineTranscriptRefiner
-from .storage import MeetingAudioWriter, MeetingRecord, MeetingStore, TranscriptSegment
+from .storage import MeetingAudioWriter, MeetingRecord, MeetingStore, TranscriptSegment, transcript_markdown
 from .summary import SummaryWorker
 from .transcript import TranscriptAssembler
 
@@ -37,6 +38,7 @@ def health() -> dict[str, object]:
         "asr_model": settings.asr_model,
         "mock_asr": settings.mock_asr,
         "summary_enabled": settings.summary_enabled,
+        "diarization_enabled": settings.diarization_enabled,
         "data_dir": str(settings.data_dir),
     }
 
@@ -55,11 +57,18 @@ def get_meeting(meeting_id: str) -> MeetingRecord:
 
 
 @app.get("/api/meetings/{meeting_id}/transcript.md")
-def export_transcript(meeting_id: str) -> FileResponse:
-    transcript_path = store.transcript_path(meeting_id)
-    if not transcript_path.exists():
+def export_transcript(meeting_id: str) -> Response:
+    try:
+        record = store.get_meeting(meeting_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Meeting not found") from exc
+    if not record.transcript:
         raise HTTPException(status_code=404, detail="Transcript not found")
-    return FileResponse(transcript_path, media_type="text/markdown; charset=utf-8")
+    return Response(
+        content=transcript_markdown(record),
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'inline; filename="{record.id}.md"'},
+    )
 
 
 @app.post("/api/meetings/{meeting_id}/refine-transcript")
@@ -83,6 +92,33 @@ async def refine_transcript(meeting_id: str) -> dict[str, object]:
     store.save(record)
     write_transcript_text(record)
     return {"ok": True, "meeting_id": meeting_id, "segments": len(segments)}
+
+
+@app.post("/api/meetings/{meeting_id}/diarize")
+async def diarize_meeting(meeting_id: str) -> dict[str, object]:
+    try:
+        record = store.get_meeting(meeting_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Meeting not found") from exc
+
+    if not settings.diarization_enabled:
+        raise HTTPException(status_code=400, detail="Speaker diarization is disabled")
+
+    audio_path = store.audio_path(meeting_id)
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio not found")
+
+    worker = DiarizationWorker(settings, store, record)
+    ok = await worker.run()
+    refreshed = store.get_meeting(meeting_id)
+    if refreshed.speaker_segments:
+        write_transcript_text(refreshed)
+    return {
+        "ok": ok,
+        "meeting_id": meeting_id,
+        "speaker_segments": len(refreshed.speaker_segments),
+        "speaker_status": refreshed.speaker_status,
+    }
 
 
 @app.websocket("/ws/record")
@@ -211,7 +247,7 @@ async def _handle_text_message(text: str, transcriber, handle_updates) -> None:
 
 def write_transcript_text(record: MeetingRecord) -> None:
     store.transcript_path(record.id).write_text(
-        "\n".join(item.text for item in record.transcript if item.text).strip() + "\n",
+        transcript_markdown(record),
         encoding="utf-8",
     )
 

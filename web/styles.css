@@ -386,9 +386,16 @@ h2 {
   min-height: 36px;
 }
 
+.meeting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .meeting-meta {
   color: var(--muted);
   font-size: 13px;
+  line-height: 1.5;
 }
 
 @media (max-width: 820px) {

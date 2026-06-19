@@ -5,7 +5,8 @@ param(
   [switch]$Refine,
   [string]$RefineModel = "paraformer-zh",
   [string]$VadModel = "fsmn-vad",
-  [string]$PuncModel = "ct-punc"
+  [string]$PuncModel = "ct-punc",
+  [switch]$Diarization
 )
 
 . "$PSScriptRoot\common.ps1"
@@ -53,4 +54,12 @@ Set-Content -Path $tempFile -Value $code -Encoding UTF8
 & $python $tempFile
 if ($LASTEXITCODE -ne 0) {
   exit $LASTEXITCODE
+}
+
+if ($Diarization) {
+  Write-Section "Speaker diarization"
+  Write-Host "Speaker diarization uses an optional local 3D-Speaker command."
+  Write-Host "Install 3D-Speaker separately, then set:"
+  Write-Host '  $env:MIAOJI_DIARIZATION_COMMAND = "python C:\path\to\3D-Speaker\speakerlab\bin\infer_diarization.py --wav {wav} --out_dir {out_dir}"'
+  Write-Host "If this is not configured, recording and transcription still work."
 }

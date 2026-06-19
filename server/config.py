@@ -35,6 +35,10 @@ class Settings:
     summary_min_new_chars: int = 80
     summary_timeout_seconds: float = 45
     summary_mock: bool = False
+    diarization_enabled: bool = True
+    diarization_mock: bool = False
+    diarization_command: str = ""
+    diarization_timeout_seconds: float = 900
     mock_asr: bool = False
 
 
@@ -63,5 +67,9 @@ def get_settings() -> Settings:
         summary_min_new_chars=int(os.getenv("MIAOJI_SUMMARY_MIN_NEW_CHARS", "80")),
         summary_timeout_seconds=float(os.getenv("MIAOJI_SUMMARY_TIMEOUT_SECONDS", "45")),
         summary_mock=os.getenv("MIAOJI_SUMMARY_MOCK", "").lower() in {"1", "true", "yes", "on"},
+        diarization_enabled=os.getenv("MIAOJI_DIARIZATION_ENABLED", "1").lower() in {"1", "true", "yes", "on"},
+        diarization_mock=os.getenv("MIAOJI_DIARIZATION_MOCK", "").lower() in {"1", "true", "yes", "on"},
+        diarization_command=os.getenv("MIAOJI_DIARIZATION_COMMAND", ""),
+        diarization_timeout_seconds=float(os.getenv("MIAOJI_DIARIZATION_TIMEOUT_SECONDS", "900")),
         mock_asr=os.getenv("MIAOJI_MOCK_ASR", "").lower() in {"1", "true", "yes", "on"},
     )

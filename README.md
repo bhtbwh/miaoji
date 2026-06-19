@@ -16,6 +16,7 @@
 - 保存逐字稿：`data/meetings/<会议ID>/transcript.txt`
 - 保存会议元数据：`data/meetings/<会议ID>/meeting.json`
 - 可选实时滚动摘要：会议摘要、决策事项、待办事项、每个人负责什么、风险/问题
+- 可选会后说话人分离：本地离线生成 `Speaker 1/2/3` 标签
 - PWA manifest 和离线静态资源缓存
 - Windows 新电脑一键安装、启动、自检
 - 架构守卫脚本，防止核心链路漂移
@@ -78,8 +79,9 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start.ps1
 - OpenSSL 和 HTTPS 证书
 - 局域网 IP
 - 摘要开关、模型、API Key 提示
+- 说话人分离命令提示
 
-摘要配置缺失只会提示，不会阻止实时转写启动。
+摘要和说话人分离配置缺失只会提示，不会阻止实时转写启动。
 
 ## 本机开发启动
 
@@ -182,7 +184,30 @@ $env:MIAOJI_SUMMARY_MIN_NEW_CHARS = "80"
 }
 ```
 
-还会保存 `rolling_summary_history` 和 `summary_status`。当前没有做多人说话人分离；“每个人负责什么”只在逐字稿里明确出现姓名、称呼或负责人时提取，不靠模型猜。
+还会保存 `rolling_summary_history` 和 `summary_status`。“每个人负责什么”只在逐字稿里明确出现姓名、称呼、负责人或 `Speaker 1/2/3` 编号时提取，不靠模型猜真实姓名。
+
+## 会后说话人分离
+
+第一版只做会后离线分离，不影响录音和实时转写。页面历史会议里点“说话人分离”，成功后导出的逐字稿会带：
+
+```text
+[Speaker 1] 这是一段发言。
+[Speaker 2] 这是另一段发言。
+```
+
+真实 3D-Speaker 命令是可选配置；未配置时按钮会提示错误，但转写照常可用。测试或演示可用 mock：
+
+```powershell
+$env:MIAOJI_DIARIZATION_MOCK = "1"
+.\scripts\start.ps1
+```
+
+真实命令按本机 3D-Speaker 安装位置配置：
+
+```powershell
+$env:MIAOJI_DIARIZATION_COMMAND = "python C:\path\to\3D-Speaker\speakerlab\bin\infer_diarization.py --wav {wav} --out_dir {out_dir}"
+.\scripts\start.ps1
+```
 
 ## 防漂移验证
 

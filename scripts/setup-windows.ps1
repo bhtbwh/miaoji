@@ -57,5 +57,6 @@ if (-not $SkipCert) {
 Write-Section "Done"
 Write-Host "Mock ASR start: .\scripts\start-mock.ps1"
 Write-Host "Real ASR start: .\scripts\start.ps1"
+Write-Host "Optional speaker diarization requires MIAOJI_DIARIZATION_COMMAND; transcription works without it."
 $httpsReady = -not $SkipCert
 Write-AccessUrls -Port 8765 -Https $httpsReady -LanIp $lanIp

@@ -12,6 +12,7 @@ REQUIRED_PATHS = [
     "docs/ROADMAP.md",
     "server/app.py",
     "server/asr.py",
+    "server/diarization.py",
     "server/refine.py",
     "server/storage.py",
     "server/summary.py",
@@ -95,6 +96,9 @@ def main() -> int:
     for required in ("rolling_summary", "rolling_summary_history", "summary_status"):
         if required not in storage_text:
             errors.append(f"server/storage.py 必须保留 {required} 摘要存储字段")
+    for required in ("speaker_segments", "speaker_status"):
+        if required not in storage_text:
+            errors.append(f"server/storage.py 必须保留 {required} 说话人分离字段")
     for key in SUMMARY_KEYS:
         if key not in storage_text:
             errors.append(f"server/storage.py 必须保留摘要固定字段: {key}")
@@ -109,6 +113,16 @@ def main() -> int:
     app_text = (ROOT / "server" / "app.py").read_text(encoding="utf-8")
     if "SummaryWorker" not in app_text or '"type": "summary"' not in summary_text:
         errors.append("server/app.py 必须启动 SummaryWorker，并通过 WebSocket 发送 summary 消息")
+    if "DiarizationWorker" not in app_text or "/diarize" not in app_text:
+        errors.append("server/app.py 必须提供会后说话人分离 API")
+    record_audio_body = app_text.split('@app.websocket("/ws/record")', 1)[-1].split("\ndef write_transcript_text", 1)[0]
+    if "DiarizationWorker" in record_audio_body:
+        errors.append("说话人分离不能进入 /ws/record 实时录音主循环")
+
+    diarization_text = (ROOT / "server" / "diarization.py").read_text(encoding="utf-8")
+    for required in ("DiarizationWorker", "MIAOJI_DIARIZATION_COMMAND", "MockDiarizationClient", "parse_rttm"):
+        if required not in diarization_text:
+            errors.append(f"server/diarization.py 缺少说话人分离约束: {required}")
 
     if errors:
         print("Architecture guard failed:")

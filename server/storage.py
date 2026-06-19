@@ -25,12 +25,28 @@ def default_summary_status() -> dict[str, Any]:
     }
 
 
+def default_speaker_status() -> dict[str, Any]:
+    return {
+        "state": "idle",
+        "last_updated_at": None,
+        "last_error": "",
+        "engine": "",
+    }
+
+
 @dataclass
 class TranscriptSegment:
     index: int
     text: str
     is_final: bool
     timestamp: float
+
+
+@dataclass
+class SpeakerSegment:
+    speaker: str
+    start: float
+    end: float
 
 
 @dataclass
@@ -46,6 +62,8 @@ class MeetingRecord:
     rolling_summary: dict[str, list[Any]] = field(default_factory=default_rolling_summary)
     rolling_summary_history: list[dict[str, Any]] = field(default_factory=list)
     summary_status: dict[str, Any] = field(default_factory=default_summary_status)
+    speaker_segments: list[SpeakerSegment] = field(default_factory=list)
+    speaker_status: dict[str, Any] = field(default_factory=default_speaker_status)
 
 
 class MeetingStore:
@@ -80,6 +98,8 @@ class MeetingStore:
                     "status": data["status"],
                     "duration_seconds": data.get("duration_seconds", 0),
                     "segments": len(data.get("transcript", [])),
+                    "speaker_segments": len(data.get("speaker_segments", [])),
+                    "speaker_status": data.get("speaker_status", default_speaker_status()),
                 }
             )
         return meetings
@@ -91,6 +111,8 @@ class MeetingStore:
         data["rolling_summary"] = normalize_rolling_summary(data.get("rolling_summary"))
         data.setdefault("rolling_summary_history", [])
         data.setdefault("summary_status", default_summary_status())
+        data["speaker_segments"] = normalize_speaker_segments(data.get("speaker_segments"))
+        data.setdefault("speaker_status", default_speaker_status())
         return MeetingRecord(**data)
 
     def save(self, record: MeetingRecord) -> None:
@@ -106,6 +128,11 @@ class MeetingStore:
 
     def audio_path(self, meeting_id: str) -> Path:
         return self._meeting_dir(meeting_id) / "audio.wav"
+
+    def diarization_dir(self, meeting_id: str) -> Path:
+        path = self._meeting_dir(meeting_id) / "diarization"
+        path.mkdir(parents=True, exist_ok=True)
+        return path
 
     def _meeting_dir(self, meeting_id: str) -> Path:
         if any(part in meeting_id for part in ("/", "\\", "..")):
@@ -124,6 +151,73 @@ def normalize_rolling_summary(value: Any) -> dict[str, list[Any]]:
         elif item:
             normalized[key] = [item]
     return normalized
+
+
+def normalize_speaker_segments(value: Any) -> list[SpeakerSegment]:
+    if not isinstance(value, list):
+        return []
+    segments: list[SpeakerSegment] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        speaker = str(item.get("speaker") or "").strip()
+        if not speaker:
+            continue
+        try:
+            start = max(0.0, float(item.get("start", 0)))
+            end = max(start, float(item.get("end", start)))
+        except (TypeError, ValueError):
+            continue
+        segments.append(SpeakerSegment(speaker=speaker, start=start, end=end))
+    return sorted(segments, key=lambda segment: (segment.start, segment.end, segment.speaker))
+
+
+def transcript_audio_time(record: MeetingRecord, segment: TranscriptSegment) -> float | None:
+    if not record.duration_seconds:
+        return None
+    if segment.timestamp > 1_000_000_000:
+        try:
+            created_at = datetime.fromisoformat(record.created_at).timestamp()
+        except ValueError:
+            created_at = 0
+        relative = segment.timestamp - created_at
+        if 0 <= relative <= record.duration_seconds + 2:
+            return relative
+    if 0 <= segment.timestamp <= record.duration_seconds + 2:
+        return segment.timestamp
+    if record.transcript:
+        return ((segment.index + 0.5) / len(record.transcript)) * record.duration_seconds
+    return None
+
+
+def speaker_for_segment(record: MeetingRecord, segment: TranscriptSegment) -> str:
+    if not record.speaker_segments:
+        return "Speaker ?"
+    audio_time = transcript_audio_time(record, segment)
+    if audio_time is None:
+        return "Speaker ?"
+
+    for speaker_segment in record.speaker_segments:
+        if speaker_segment.start <= audio_time <= speaker_segment.end:
+            return speaker_segment.speaker
+
+    nearest = min(
+        record.speaker_segments,
+        key=lambda item: min(abs(audio_time - item.start), abs(audio_time - item.end)),
+    )
+    return nearest.speaker
+
+
+def transcript_line(record: MeetingRecord, segment: TranscriptSegment, include_speaker: bool = True) -> str:
+    text = segment.text.strip()
+    if not include_speaker or not record.speaker_segments:
+        return text
+    return f"[{speaker_for_segment(record, segment)}] {text}".strip()
+
+
+def transcript_markdown(record: MeetingRecord) -> str:
+    lines = [transcript_line(record, segment) for segment in record.transcript if segment.text.strip()]
+    return "\n".join(lines).strip() + "\n"
 
 
 class MeetingAudioWriter:
