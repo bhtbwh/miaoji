@@ -3,7 +3,7 @@
 一个自用的本地会议记录 App/PWA。第一阶段已实现核心链路：
 
 ```text
-手机/电脑浏览器录音 -> WebSocket 发到本地电脑 -> FunASR 流式转写 -> 页面实时显示 -> 可选滚动摘要 -> 本地保存 WAV、逐字稿和会议 JSON
+手机/电脑浏览器录音 -> WebSocket 发到本地电脑 -> FunASR 流式转写 -> 页面实时显示 -> 可选滚动摘要 -> 可选会后正式纪要 -> 本地保存 WAV、逐字稿和会议 JSON
 ```
 
 ## 当前功能
@@ -16,6 +16,7 @@
 - 保存逐字稿：`data/meetings/<会议ID>/transcript.txt`
 - 保存会议元数据：`data/meetings/<会议ID>/meeting.json`
 - 可选实时滚动摘要：会议摘要、决策事项、待办事项、每个人负责什么、风险/问题
+- 可选会后正式纪要：使用独立模型配置生成 Markdown 纪要
 - 可选会后说话人分离：本地离线生成 `Speaker 1/2/3` 标签
 - PWA manifest 和离线静态资源缓存
 - Windows 新电脑一键安装、启动、自检
@@ -93,9 +94,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scri
 - OpenSSL 和 HTTPS 证书
 - 局域网 IP
 - 摘要开关、模型、API Key 提示
+- 正式纪要模型、API Key 提示
 - 说话人分离命令提示
 
-摘要和说话人分离配置缺失只会提示，不会阻止实时转写启动。
+摘要、正式纪要和说话人分离配置缺失只会提示，不会阻止实时转写启动。
 
 ## 本机开发启动
 
@@ -199,6 +201,27 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scri
 ```
 
 还会保存 `rolling_summary_history` 和 `summary_status`。“每个人负责什么”只在逐字稿里明确出现姓名、称呼、负责人或 `Speaker 1/2/3` 编号时提取，不靠模型猜真实姓名。
+
+## 会后正式纪要配置
+
+正式纪要和实时滚动摘要是两套模型配置。实时摘要适合快模型；正式纪要可以用更强但更慢的模型。
+
+```powershell
+$env:MIAOJI_FINAL_SUMMARY_ENABLED = "1"
+$env:MIAOJI_FINAL_SUMMARY_BASE_URL = "https://ark.cn-beijing.volces.com/api/coding/v3"
+$env:MIAOJI_FINAL_SUMMARY_MODEL = "doubao-seed-2.0-lite"
+$env:MIAOJI_FINAL_SUMMARY_API_KEY = "<你的本机 API Key>"
+$env:MIAOJI_FINAL_SUMMARY_TIMEOUT_SECONDS = "180"
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
+```
+
+会议录完后，在历史会议里点“生成纪要”。成功后点“查看纪要”打开：
+
+```text
+/api/meetings/<会议ID>/minutes.md
+```
+
+正式纪要会写入 `meeting.json` 的 `final_summary`、`final_summary_markdown` 和 `final_summary_status`。生成失败只写错误状态，不覆盖已有纪要，也不影响录音、转写和实时摘要。
 
 ## 会后说话人分离
 

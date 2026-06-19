@@ -10,6 +10,7 @@
 -> 页面边录边显示文字
 -> 可选实时滚动摘要
 -> 可选会后说话人分离
+-> 可选会后正式纪要
 -> 本地保存音频和逐字稿
 -> 电脑/手机都能查看
 ```
@@ -17,6 +18,7 @@
 第一阶段证明核心链路能稳定跑长会议：录音、传输、流式转写、实时显示、落盘。
 第二阶段增加可选摘要 worker，但摘要失败不能影响录音、转写和落盘。
 会后说话人分离只在会议结束后手动触发，不进入实时录音主循环。
+会后正式纪要使用独立模型配置，只在会议结束后手动触发，不进入实时录音主循环。
 
 ## 固定架构
 
@@ -30,6 +32,8 @@ flowchart LR
   Summary --> Server
   Server --> Diarization["DiarizationWorker\n3D-Speaker optional"]
   Diarization --> Server
+  Server --> FinalSummary["FinalSummaryWorker\nOpenAI-compatible LLM"]
+  FinalSummary --> Server
   Server --> Data["data/meetings\nWAV / transcript.txt / meeting.json"]
 ```
 
@@ -40,6 +44,7 @@ flowchart LR
 - `server/asr.py`：唯一 ASR 接入层。第一阶段真实模型固定为 `FunASR paraformer-zh-streaming`。
 - `server/summary.py`：实时滚动摘要 worker。只读取已保存的正式 transcript segment，不阻塞 ASR。
 - `server/diarization.py`：会后说话人分离 worker。只读取已保存的 `audio.wav`。
+- `server/final_summary.py`：会后正式纪要 worker。读取完整逐字稿、滚动摘要历史和 speaker 标签，不阻塞录音链路。
 - `server/storage.py`：本地文件存储。会议数据固定保存在 `data/meetings/<meeting_id>/`。
 - `scripts/`：Windows 安装、启动、自检、验证脚本。
 - `docs/`：架构、路线和运维说明。
@@ -54,6 +59,7 @@ flowchart LR
 - 不把实时摘要塞进转写 WebSocket 的强依赖里。第二阶段摘要应作为独立 worker 或服务内后台任务。
 - 不把摘要模型失败变成录音失败；摘要错误只写入 `summary_status`。
 - 不把说话人分离放入 `/ws/record` 实时录音主循环。
+- 不把会后正式纪要放入 `/ws/record` 实时录音主循环。
 - 不猜真实姓名。说话人分离第一版只使用 `Speaker 1/2/3` 编号。
 - 不把会后总结作为第一阶段启动前置条件。
 - 不在业务代码里硬编码个人机器路径。
@@ -99,6 +105,20 @@ data/meetings/<meeting_id>/
   "rolling_summary_history": [],
   "summary_status": {
     "state": "idle|running|error",
+    "last_updated_at": null,
+    "last_error": "",
+    "model": ""
+  },
+  "final_summary": {
+    "会议摘要": [],
+    "决策事项": [],
+    "待办事项": [],
+    "每个人负责什么": [],
+    "风险/问题": []
+  },
+  "final_summary_markdown": "",
+  "final_summary_status": {
+    "state": "idle|running|error|done",
     "last_updated_at": null,
     "last_error": "",
     "model": ""

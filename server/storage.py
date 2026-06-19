@@ -25,6 +25,15 @@ def default_summary_status() -> dict[str, Any]:
     }
 
 
+def default_final_summary_status() -> dict[str, Any]:
+    return {
+        "state": "idle",
+        "last_updated_at": None,
+        "last_error": "",
+        "model": "",
+    }
+
+
 def default_speaker_status() -> dict[str, Any]:
     return {
         "state": "idle",
@@ -62,6 +71,9 @@ class MeetingRecord:
     rolling_summary: dict[str, list[Any]] = field(default_factory=default_rolling_summary)
     rolling_summary_history: list[dict[str, Any]] = field(default_factory=list)
     summary_status: dict[str, Any] = field(default_factory=default_summary_status)
+    final_summary: dict[str, list[Any]] = field(default_factory=default_rolling_summary)
+    final_summary_markdown: str = ""
+    final_summary_status: dict[str, Any] = field(default_factory=default_final_summary_status)
     speaker_segments: list[SpeakerSegment] = field(default_factory=list)
     speaker_status: dict[str, Any] = field(default_factory=default_speaker_status)
 
@@ -100,6 +112,8 @@ class MeetingStore:
                     "segments": len(data.get("transcript", [])),
                     "speaker_segments": len(data.get("speaker_segments", [])),
                     "speaker_status": data.get("speaker_status", default_speaker_status()),
+                    "final_summary_status": data.get("final_summary_status", default_final_summary_status()),
+                    "has_final_summary": bool(data.get("final_summary_markdown")),
                 }
             )
         return meetings
@@ -111,6 +125,9 @@ class MeetingStore:
         data["rolling_summary"] = normalize_rolling_summary(data.get("rolling_summary"))
         data.setdefault("rolling_summary_history", [])
         data.setdefault("summary_status", default_summary_status())
+        data["final_summary"] = normalize_rolling_summary(data.get("final_summary"))
+        data.setdefault("final_summary_markdown", "")
+        data.setdefault("final_summary_status", default_final_summary_status())
         data["speaker_segments"] = normalize_speaker_segments(data.get("speaker_segments"))
         data.setdefault("speaker_status", default_speaker_status())
         return MeetingRecord(**data)

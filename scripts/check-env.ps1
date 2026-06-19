@@ -40,6 +40,10 @@ Add-Check "SummaryEnabled" ($env:MIAOJI_SUMMARY_ENABLED -in @("1", "true", "yes"
 Add-Check "SummaryAPIKey" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_SUMMARY_API_KEY)) "MIAOJI_SUMMARY_API_KEY is only needed when realtime summary is enabled"
 Add-Check "SummaryBaseURL" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_SUMMARY_BASE_URL)) ($(if ($env:MIAOJI_SUMMARY_BASE_URL) { $env:MIAOJI_SUMMARY_BASE_URL } else { "default: https://ark.cn-beijing.volces.com/api/coding/v3" }))
 Add-Check "SummaryModel" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_SUMMARY_MODEL)) ($(if ($env:MIAOJI_SUMMARY_MODEL) { $env:MIAOJI_SUMMARY_MODEL } else { "default: doubao-seed-2.0-lite" }))
+Add-Check "FinalSummaryEnabled" ($env:MIAOJI_FINAL_SUMMARY_ENABLED -ne "0") "MIAOJI_FINAL_SUMMARY_ENABLED=$env:MIAOJI_FINAL_SUMMARY_ENABLED (default: 1)"
+Add-Check "FinalSummaryAPIKey" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_FINAL_SUMMARY_API_KEY)) "MIAOJI_FINAL_SUMMARY_API_KEY is only needed when generating formal minutes"
+Add-Check "FinalSummaryBaseURL" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_FINAL_SUMMARY_BASE_URL)) ($(if ($env:MIAOJI_FINAL_SUMMARY_BASE_URL) { $env:MIAOJI_FINAL_SUMMARY_BASE_URL } else { "default: https://ark.cn-beijing.volces.com/api/coding/v3" }))
+Add-Check "FinalSummaryModel" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_FINAL_SUMMARY_MODEL)) ($(if ($env:MIAOJI_FINAL_SUMMARY_MODEL) { $env:MIAOJI_FINAL_SUMMARY_MODEL } else { "default: doubao-seed-2.0-lite" }))
 Add-Check "DiarizationCommand" (-not [string]::IsNullOrWhiteSpace($env:MIAOJI_DIARIZATION_COMMAND)) "Optional 3D-Speaker command; mock mode uses MIAOJI_DIARIZATION_MOCK=1"
 
 $oldErrorActionPreference = $ErrorActionPreference

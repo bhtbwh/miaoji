@@ -35,6 +35,12 @@ class Settings:
     summary_min_new_chars: int = 80
     summary_timeout_seconds: float = 45
     summary_mock: bool = False
+    final_summary_enabled: bool = True
+    final_summary_base_url: str = "https://ark.cn-beijing.volces.com/api/coding/v3"
+    final_summary_model: str = "doubao-seed-2.0-lite"
+    final_summary_api_key: str = ""
+    final_summary_timeout_seconds: float = 180
+    final_summary_mock: bool = False
     diarization_enabled: bool = True
     diarization_mock: bool = False
     diarization_command: str = ""
@@ -67,6 +73,15 @@ def get_settings() -> Settings:
         summary_min_new_chars=int(os.getenv("MIAOJI_SUMMARY_MIN_NEW_CHARS", "80")),
         summary_timeout_seconds=float(os.getenv("MIAOJI_SUMMARY_TIMEOUT_SECONDS", "45")),
         summary_mock=os.getenv("MIAOJI_SUMMARY_MOCK", "").lower() in {"1", "true", "yes", "on"},
+        final_summary_enabled=os.getenv("MIAOJI_FINAL_SUMMARY_ENABLED", "1").lower() in {"1", "true", "yes", "on"},
+        final_summary_base_url=os.getenv(
+            "MIAOJI_FINAL_SUMMARY_BASE_URL",
+            os.getenv("MIAOJI_SUMMARY_BASE_URL", "https://ark.cn-beijing.volces.com/api/coding/v3"),
+        ),
+        final_summary_model=os.getenv("MIAOJI_FINAL_SUMMARY_MODEL", "doubao-seed-2.0-lite"),
+        final_summary_api_key=os.getenv("MIAOJI_FINAL_SUMMARY_API_KEY", ""),
+        final_summary_timeout_seconds=float(os.getenv("MIAOJI_FINAL_SUMMARY_TIMEOUT_SECONDS", "180")),
+        final_summary_mock=os.getenv("MIAOJI_FINAL_SUMMARY_MOCK", "").lower() in {"1", "true", "yes", "on"},
         diarization_enabled=os.getenv("MIAOJI_DIARIZATION_ENABLED", "1").lower() in {"1", "true", "yes", "on"},
         diarization_mock=os.getenv("MIAOJI_DIARIZATION_MOCK", "").lower() in {"1", "true", "yes", "on"},
         diarization_command=os.getenv("MIAOJI_DIARIZATION_COMMAND", ""),

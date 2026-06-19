@@ -68,8 +68,15 @@ python scripts\smoke-ws.py "ws://127.0.0.1:8765/ws/record?title=stability" 7200
 目标：
 
 - 合并完整逐字稿、滚动摘要历史、决策/待办/风险。
-- 生成正式会议纪要。
-- 支持 Markdown / Word / PDF 导出。
+- 使用独立 `MIAOJI_FINAL_SUMMARY_*` 模型配置生成正式会议纪要。
+- 支持 Markdown 导出。
+
+约束：
+
+- 不进入实时录音和 ASR 主链路。
+- 生成失败只写入 `final_summary_status`，不覆盖已有纪要。
+- 第一版不让模型猜真实姓名；如果有说话人标签，只使用 `Speaker 1/2/3`。
+- Word / PDF 导出留到体验完善阶段。
 
 ## 第四阶段：体验完善
 

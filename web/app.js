@@ -418,18 +418,25 @@ async function loadMeetings() {
       const duration = formatDuration((meeting.duration_seconds || 0) * 1000);
       row.innerHTML = `
         <a href="/api/meetings/${meeting.id}/transcript.md" target="_blank" rel="noreferrer"></a>
-        <div class="meeting-meta">${meeting.created_at} · ${duration} · ${meeting.segments} 段 · ${meeting.status} · ${formatSpeakerStatus(meeting)}</div>
+        <div class="meeting-meta">${meeting.created_at} · ${duration} · ${meeting.segments} 段 · ${meeting.status} · ${formatSpeakerStatus(meeting)} · ${formatFinalSummaryStatus(meeting)}</div>
         <div class="meeting-actions">
           <button class="small-btn refine-btn" type="button">会后精转</button>
           <button class="small-btn diarize-btn" type="button">说话人分离</button>
+          <button class="small-btn final-summary-btn" type="button">生成纪要</button>
+          <a class="small-btn minutes-link" href="/api/meetings/${meeting.id}/minutes.md" target="_blank" rel="noreferrer">查看纪要</a>
         </div>
       `;
       row.querySelector("a").textContent = meeting.title;
+      const minutesLink = row.querySelector(".minutes-link");
+      minutesLink.style.display = meeting.has_final_summary ? "" : "none";
       row.querySelector(".refine-btn").addEventListener("click", (event) => {
         refineMeeting(meeting.id, event.currentTarget);
       });
       row.querySelector(".diarize-btn").addEventListener("click", (event) => {
         diarizeMeeting(meeting.id, event.currentTarget);
+      });
+      row.querySelector(".final-summary-btn").addEventListener("click", (event) => {
+        generateFinalSummary(meeting.id, event.currentTarget);
       });
       els.meetingList.append(row);
     }
@@ -480,12 +487,42 @@ async function diarizeMeeting(meetingId, button) {
   }
 }
 
+async function generateFinalSummary(meetingId, button) {
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "生成中";
+  try {
+    const response = await fetch(`/api/meetings/${meetingId}/final-summary`, { method: "POST" });
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload.ok === false) {
+      const detail = payload.detail || payload.final_summary_status?.last_error || "纪要生成失败";
+      throw new Error(detail);
+    }
+    button.textContent = "已生成";
+    await loadMeetings();
+  } catch (error) {
+    button.textContent = oldText;
+    setStatus(`纪要生成失败：${error.message || error}`, true);
+    await loadMeetings();
+  } finally {
+    button.disabled = false;
+  }
+}
+
 function formatSpeakerStatus(meeting) {
   const status = meeting.speaker_status || {};
   if (status.state === "done") return `${meeting.speaker_segments || 0} 段说话人`;
   if (status.state === "running") return "说话人分离中";
   if (status.state === "error") return "说话人分离异常";
   return "未分离说话人";
+}
+
+function formatFinalSummaryStatus(meeting) {
+  const status = meeting.final_summary_status || {};
+  if (status.state === "done" || meeting.has_final_summary) return "已生成纪要";
+  if (status.state === "running") return "纪要生成中";
+  if (status.state === "error") return "纪要异常";
+  return "未生成纪要";
 }
 
 function tickDuration() {

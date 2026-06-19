@@ -13,6 +13,7 @@ REQUIRED_PATHS = [
     "server/app.py",
     "server/asr.py",
     "server/diarization.py",
+    "server/final_summary.py",
     "server/refine.py",
     "server/storage.py",
     "server/summary.py",
@@ -88,6 +89,9 @@ def main() -> int:
         errors.append("web/app.js 必须保持 16k 采样率输出")
     if "/ws/record" not in web_text:
         errors.append("web/app.js 必须通过 /ws/record 发送录音")
+    for required in ("final-summary", "minutes.md", "生成纪要"):
+        if required not in web_text:
+            errors.append(f"web/app.js 缺少会后正式纪要入口: {required}")
 
     storage_text = (ROOT / "server" / "storage.py").read_text(encoding="utf-8")
     for required in ("audio.wav", "transcript.txt", "meeting.json"):
@@ -96,6 +100,9 @@ def main() -> int:
     for required in ("rolling_summary", "rolling_summary_history", "summary_status"):
         if required not in storage_text:
             errors.append(f"server/storage.py 必须保留 {required} 摘要存储字段")
+    for required in ("final_summary", "final_summary_markdown", "final_summary_status"):
+        if required not in storage_text:
+            errors.append(f"server/storage.py 必须保留 {required} 会后纪要存储字段")
     for required in ("speaker_segments", "speaker_status"):
         if required not in storage_text:
             errors.append(f"server/storage.py 必须保留 {required} 说话人分离字段")
@@ -123,6 +130,20 @@ def main() -> int:
     for required in ("DiarizationWorker", "MIAOJI_DIARIZATION_COMMAND", "MockDiarizationClient", "parse_rttm"):
         if required not in diarization_text:
             errors.append(f"server/diarization.py 缺少说话人分离约束: {required}")
+
+    final_summary_text = (ROOT / "server" / "final_summary.py").read_text(encoding="utf-8")
+    for required in (
+        "FinalSummaryWorker",
+        "chat/completions",
+        "MIAOJI_FINAL_SUMMARY_API_KEY",
+        "render_minutes_markdown",
+    ):
+        if required not in final_summary_text:
+            errors.append(f"server/final_summary.py 缺少会后正式纪要约束: {required}")
+    if "FinalSummaryWorker" not in app_text or "/final-summary" not in app_text or "/minutes.md" not in app_text:
+        errors.append("server/app.py 必须提供会后正式纪要 API 和 Markdown 导出")
+    if "FinalSummaryWorker" in record_audio_body:
+        errors.append("会后正式纪要不能进入 /ws/record 实时录音主循环")
 
     if errors:
         print("Architecture guard failed:")

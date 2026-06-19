@@ -15,6 +15,7 @@ from fastapi.testclient import TestClient
 from server.asr import TranscriptUpdate
 from server.config import get_settings
 from server.diarization import DiarizationWorker
+from server.final_summary import FinalSummaryWorker
 from server.storage import MeetingStore, SpeakerSegment, TranscriptSegment, default_rolling_summary
 from server.summary import SummaryWorker
 from server.transcript import TranscriptAssembler, merge_fragment
@@ -66,6 +67,38 @@ class FakeDiarizationClient:
         return self.response
 
 
+class FakeFinalSummaryClient:
+    def __init__(self, response: dict[str, list[Any]] | None = None, error: Exception | None = None) -> None:
+        self.response = response or {
+            "会议摘要": ["形成正式会议纪要"],
+            "决策事项": ["确认继续推进"],
+            "待办事项": ["Speaker 1 整理行动项"],
+            "每个人负责什么": ["Speaker 1：整理行动项"],
+            "风险/问题": ["时间节点需要跟进"],
+        }
+        self.error = error
+        self.calls: list[dict[str, Any]] = []
+
+    async def generate(
+        self,
+        record,
+        transcript_text: str,
+        rolling_summary: dict[str, list[Any]],
+        rolling_history: list[dict[str, Any]],
+    ) -> dict[str, list[Any]]:
+        self.calls.append(
+            {
+                "record_id": record.id,
+                "transcript_text": transcript_text,
+                "rolling_summary": rolling_summary,
+                "rolling_history": rolling_history,
+            }
+        )
+        if self.error:
+            raise self.error
+        return self.response
+
+
 class CoreFlowTest(unittest.TestCase):
     def setUp(self) -> None:
         for name in (
@@ -76,6 +109,10 @@ class CoreFlowTest(unittest.TestCase):
             "MIAOJI_SUMMARY_MIN_NEW_CHARS",
             "MIAOJI_SUMMARY_INTERVAL_SECONDS",
             "MIAOJI_TRANSCRIPT_MIN_CHARS",
+            "MIAOJI_FINAL_SUMMARY_ENABLED",
+            "MIAOJI_FINAL_SUMMARY_MOCK",
+            "MIAOJI_FINAL_SUMMARY_MODEL",
+            "MIAOJI_FINAL_SUMMARY_API_KEY",
             "MIAOJI_DIARIZATION_MOCK",
             "MIAOJI_DIARIZATION_COMMAND",
         ):
@@ -130,6 +167,9 @@ class CoreFlowTest(unittest.TestCase):
             self.assertIn("rolling_summary", saved)
             self.assertIn("rolling_summary_history", saved)
             self.assertIn("summary_status", saved)
+            self.assertIn("final_summary", saved)
+            self.assertIn("final_summary_markdown", saved)
+            self.assertIn("final_summary_status", saved)
             self.assertIn("speaker_segments", saved)
             self.assertIn("speaker_status", saved)
 
@@ -211,6 +251,43 @@ class CoreFlowTest(unittest.TestCase):
 
             transcript = client.get(f"/api/meetings/{meeting_id}/transcript.md").text
             self.assertIn("[Speaker", transcript)
+
+    def test_mock_recording_flow_can_generate_final_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["MIAOJI_MOCK_ASR"] = "1"
+            os.environ["MIAOJI_FINAL_SUMMARY_MOCK"] = "1"
+            os.environ["MIAOJI_DATA_DIR"] = temp_dir
+
+            import server.config
+            import server.app
+
+            importlib.reload(server.config)
+            app_module = importlib.reload(server.app)
+            client = TestClient(app_module.app)
+
+            pcm_second = b"\x00\x00" * 16_000
+            with client.websocket_connect("/ws/record?title=minutes") as websocket:
+                meeting_id = websocket.receive_json()["meeting"]["id"]
+                websocket.send_bytes(pcm_second)
+                websocket.receive_json()
+                websocket.send_text(json.dumps({"type": "stop"}))
+                for _ in range(4):
+                    message = websocket.receive_json()
+                    if message["type"] == "meeting_finished":
+                        break
+
+            response = client.post(f"/api/meetings/{meeting_id}/final-summary")
+            self.assertEqual(response.status_code, 200)
+            payload = response.json()
+            self.assertTrue(payload["ok"])
+            self.assertTrue(payload["has_final_summary"])
+            self.assertEqual(payload["final_summary_status"]["state"], "done")
+
+            minutes = client.get(f"/api/meetings/{meeting_id}/minutes.md")
+            self.assertEqual(minutes.status_code, 200)
+            self.assertIn("# minutes", minutes.text)
+            self.assertIn("## 会议摘要", minutes.text)
+            self.assertIn("## 完整对话转文字", minutes.text)
 
     def test_streaming_fragments_are_assembled(self) -> None:
         class SettingsStub:
@@ -344,6 +421,95 @@ class CoreFlowTest(unittest.TestCase):
                 self.assertEqual(saved.summary_status["state"], "error")
                 self.assertIn("model timeout", saved.summary_status["last_error"])
                 self.assertEqual(sent[-1]["summary"]["会议摘要"], ["旧摘要"])
+
+        asyncio.run(scenario())
+
+    def test_final_summary_api_without_transcript_returns_error(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            os.environ["MIAOJI_DATA_DIR"] = temp_dir
+            os.environ["MIAOJI_FINAL_SUMMARY_MOCK"] = "1"
+
+            import server.config
+            import server.app
+
+            importlib.reload(server.config)
+            app_module = importlib.reload(server.app)
+            client = TestClient(app_module.app)
+            record = app_module.store.create_meeting("empty", 16_000)
+
+            response = client.post(f"/api/meetings/{record.id}/final-summary")
+
+            self.assertEqual(response.status_code, 404)
+            saved = app_module.store.get_meeting(record.id)
+            self.assertEqual(saved.final_summary_markdown, "")
+            self.assertEqual(saved.final_summary_status["state"], "idle")
+
+    def test_final_summary_worker_updates_minutes(self) -> None:
+        async def scenario() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                settings = replace(
+                    get_settings(),
+                    data_dir=Path(temp_dir),
+                    final_summary_model="final-model",
+                )
+                store = MeetingStore(settings.data_dir)
+                record = store.create_meeting("final-success", settings.sample_rate)
+                record.transcript.append(
+                    TranscriptSegment(
+                        index=0,
+                        text="Speaker 1 说今天确认继续推进，Speaker 1 负责整理行动项。",
+                        is_final=True,
+                        timestamp=1.0,
+                    )
+                )
+                store.save(record)
+                worker = FinalSummaryWorker(settings, store, record, FakeFinalSummaryClient())
+
+                updated = await worker.run()
+
+                self.assertTrue(updated)
+                saved = store.get_meeting(record.id)
+                self.assertEqual(saved.final_summary["会议摘要"], ["形成正式会议纪要"])
+                self.assertIn("## 待办事项", saved.final_summary_markdown)
+                self.assertIn("Speaker 1 整理行动项", saved.final_summary_markdown)
+                self.assertEqual(saved.final_summary_status["state"], "done")
+                self.assertEqual(saved.final_summary_status["model"], "final-model")
+
+        asyncio.run(scenario())
+
+    def test_final_summary_worker_failure_preserves_old_minutes(self) -> None:
+        async def scenario() -> None:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                settings = replace(
+                    get_settings(),
+                    data_dir=Path(temp_dir),
+                    final_summary_model="broken-final",
+                )
+                store = MeetingStore(settings.data_dir)
+                record = store.create_meeting("final-error", settings.sample_rate)
+                record.transcript.append(
+                    TranscriptSegment(index=0, text="这是一段正式逐字稿。", is_final=True, timestamp=1.0)
+                )
+                old_summary = default_rolling_summary()
+                old_summary["会议摘要"] = ["旧正式纪要"]
+                record.final_summary = old_summary
+                record.final_summary_markdown = "# 旧纪要\n"
+                store.save(record)
+                worker = FinalSummaryWorker(
+                    settings,
+                    store,
+                    record,
+                    FakeFinalSummaryClient(error=RuntimeError("final model failed")),
+                )
+
+                updated = await worker.run()
+
+                self.assertFalse(updated)
+                saved = store.get_meeting(record.id)
+                self.assertEqual(saved.final_summary["会议摘要"], ["旧正式纪要"])
+                self.assertEqual(saved.final_summary_markdown, "# 旧纪要\n")
+                self.assertEqual(saved.final_summary_status["state"], "error")
+                self.assertIn("final model failed", saved.final_summary_status["last_error"])
 
         asyncio.run(scenario())
 

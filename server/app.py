@@ -13,6 +13,7 @@ from fastapi.staticfiles import StaticFiles
 from .asr import TranscriptUpdate, create_transcriber
 from .config import Settings, get_settings
 from .diarization import DiarizationWorker
+from .final_summary import FinalSummaryWorker
 from .refine import OfflineTranscriptRefiner
 from .storage import MeetingAudioWriter, MeetingRecord, MeetingStore, TranscriptSegment, transcript_markdown
 from .summary import SummaryWorker
@@ -38,6 +39,7 @@ def health() -> dict[str, object]:
         "asr_model": settings.asr_model,
         "mock_asr": settings.mock_asr,
         "summary_enabled": settings.summary_enabled,
+        "final_summary_enabled": settings.final_summary_enabled,
         "diarization_enabled": settings.diarization_enabled,
         "data_dir": str(settings.data_dir),
     }
@@ -69,6 +71,45 @@ def export_transcript(meeting_id: str) -> Response:
         media_type="text/markdown; charset=utf-8",
         headers={"Content-Disposition": f'inline; filename="{record.id}.md"'},
     )
+
+
+@app.get("/api/meetings/{meeting_id}/minutes.md")
+def export_minutes(meeting_id: str) -> Response:
+    try:
+        record = store.get_meeting(meeting_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Meeting not found") from exc
+    if not record.final_summary_markdown:
+        raise HTTPException(status_code=404, detail="Final summary not found")
+    return Response(
+        content=record.final_summary_markdown,
+        media_type="text/markdown; charset=utf-8",
+        headers={"Content-Disposition": f'inline; filename="{record.id}-minutes.md"'},
+    )
+
+
+@app.post("/api/meetings/{meeting_id}/final-summary")
+async def generate_final_summary(meeting_id: str) -> dict[str, object]:
+    try:
+        record = store.get_meeting(meeting_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Meeting not found") from exc
+
+    if not settings.final_summary_enabled:
+        raise HTTPException(status_code=400, detail="Final summary is disabled")
+    if not record.transcript:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    worker = FinalSummaryWorker(settings, store, record)
+    ok = await worker.run()
+    refreshed = store.get_meeting(meeting_id)
+    return {
+        "ok": ok,
+        "meeting_id": meeting_id,
+        "final_summary_status": refreshed.final_summary_status,
+        "has_final_summary": bool(refreshed.final_summary_markdown),
+        "minutes_url": f"/api/meetings/{meeting_id}/minutes.md" if refreshed.final_summary_markdown else "",
+    }
 
 
 @app.post("/api/meetings/{meeting_id}/refine-transcript")
