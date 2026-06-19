@@ -73,7 +73,8 @@ function Write-AccessUrls {
   Write-Host "Phone URL:   ${scheme}://${LanIp}:$Port"
   Write-Host ""
   if ($Https) {
-    Write-Host "A phone browser may warn about the self-signed certificate. Continue manually."
+    Write-Host "If iPhone refuses the certificate warning, install the local root CA:"
+    Write-Host "  powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start-cert-download.ps1"
   } else {
     Write-Host "Note: phone browsers usually require HTTPS for microphone access."
   }

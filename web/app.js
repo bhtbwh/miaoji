@@ -16,6 +16,7 @@ const state = {
   segmentCount: 0,
   meetingId: "",
   stopping: false,
+  draftElement: null,
 };
 
 const els = {
@@ -55,15 +56,15 @@ async function startRecording() {
   try {
     state.mediaStream = await navigator.mediaDevices.getUserMedia({
       audio: {
-        channelCount: 1,
-        echoCancellation: true,
-        noiseSuppression: true,
-        autoGainControl: true,
+        channelCount: { ideal: 1 },
+        echoCancellation: false,
+        noiseSuppression: false,
+        autoGainControl: false,
       },
       video: false,
     });
 
-    state.audioContext = new AudioContext();
+    state.audioContext = createAudioContext();
     state.sourceNode = state.audioContext.createMediaStreamSource(state.mediaStream);
     state.processorNode = state.audioContext.createScriptProcessor(4096, 1, 1);
     state.sourceNode.connect(state.processorNode);
@@ -91,6 +92,7 @@ async function startRecording() {
     state.stopping = false;
     state.segmentCount = 0;
     state.meetingId = "";
+    state.draftElement = null;
     els.transcriptList.innerHTML = "";
     renderTranscriptEmpty();
     updateControls();
@@ -209,6 +211,9 @@ function resampleToInt16(input, inputRate, outputRate) {
   if (inputRate === outputRate) {
     return floatToInt16(input);
   }
+  if (inputRate > outputRate) {
+    return downsampleToInt16(input, inputRate, outputRate);
+  }
   const ratio = inputRate / outputRate;
   const outputLength = Math.floor(input.length / ratio);
   const output = new Float32Array(outputLength);
@@ -220,6 +225,33 @@ function resampleToInt16(input, inputRate, outputRate) {
     output[i] = input[before] * (1 - weight) + input[after] * weight;
   }
   return floatToInt16(output);
+}
+
+function downsampleToInt16(input, inputRate, outputRate) {
+  const ratio = inputRate / outputRate;
+  const outputLength = Math.floor(input.length / ratio);
+  const output = new Float32Array(outputLength);
+  for (let i = 0; i < outputLength; i += 1) {
+    const start = Math.floor(i * ratio);
+    const end = Math.min(Math.floor((i + 1) * ratio), input.length);
+    let sum = 0;
+    let count = 0;
+    for (let j = start; j < end; j += 1) {
+      sum += input[j];
+      count += 1;
+    }
+    output[i] = count ? sum / count : input[Math.min(start, input.length - 1)] || 0;
+  }
+  return floatToInt16(output);
+}
+
+function createAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  try {
+    return new AudioContextClass({ sampleRate: TARGET_SAMPLE_RATE });
+  } catch (_) {
+    return new AudioContextClass();
+  }
 }
 
 function floatToInt16(float32) {
@@ -246,11 +278,28 @@ function appendSegment(segment) {
   const empty = els.transcriptList.querySelector(".empty-state");
   if (empty) empty.remove();
 
-  const item = document.createElement("div");
+  if (!segment.is_final) {
+    const item = state.draftElement || document.createElement("div");
+    item.className = "segment draft";
+    if (!state.draftElement) {
+      item.innerHTML = `<small></small><span></span>`;
+      els.transcriptList.append(item);
+      state.draftElement = item;
+    }
+    item.querySelector("small").textContent = `${new Date(segment.timestamp * 1000).toLocaleTimeString()} · 草稿`;
+    item.querySelector("span").textContent = segment.text;
+    els.transcriptList.scrollTop = els.transcriptList.scrollHeight;
+    return;
+  }
+
+  const item = state.draftElement || document.createElement("div");
   item.className = "segment";
   item.innerHTML = `<small>${new Date(segment.timestamp * 1000).toLocaleTimeString()} · #${segment.index + 1}</small><span></span>`;
   item.querySelector("span").textContent = segment.text;
-  els.transcriptList.append(item);
+  if (!state.draftElement) {
+    els.transcriptList.append(item);
+  }
+  state.draftElement = null;
   els.transcriptList.scrollTop = els.transcriptList.scrollHeight;
   state.segmentCount += 1;
   els.segmentCount.textContent = `${state.segmentCount} 段`;
@@ -291,12 +340,36 @@ async function loadMeetings() {
       row.innerHTML = `
         <a href="/api/meetings/${meeting.id}/transcript.md" target="_blank" rel="noreferrer"></a>
         <div class="meeting-meta">${meeting.created_at} · ${duration} · ${meeting.segments} 段 · ${meeting.status}</div>
+        <button class="small-btn refine-btn" type="button">会后精转</button>
       `;
       row.querySelector("a").textContent = meeting.title;
+      row.querySelector(".refine-btn").addEventListener("click", (event) => {
+        refineMeeting(meeting.id, event.currentTarget);
+      });
       els.meetingList.append(row);
     }
   } catch (error) {
     els.meetingList.innerHTML = `<div class="empty-state">历史会议加载失败。</div>`;
+  }
+}
+
+async function refineMeeting(meetingId, button) {
+  const oldText = button.textContent;
+  button.disabled = true;
+  button.textContent = "精转中";
+  try {
+    const response = await fetch(`/api/meetings/${meetingId}/refine-transcript`, { method: "POST" });
+    if (!response.ok) {
+      const payload = await response.json().catch(() => ({}));
+      throw new Error(payload.detail || "精转失败");
+    }
+    button.textContent = "已精转";
+    await loadMeetings();
+  } catch (error) {
+    button.textContent = oldText;
+    setStatus(`会后精转失败：${error.message || error}`, true);
+  } finally {
+    button.disabled = false;
   }
 }
 

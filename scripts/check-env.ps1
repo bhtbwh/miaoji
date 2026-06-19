@@ -33,6 +33,7 @@ Add-Check "ProjectPython" $projectPythonOk $python
 $hasOpenSsl = Test-CommandAvailable -Name "openssl"
 Add-Check "OpenSSL" $hasOpenSsl "Needed for phone HTTPS certificate"
 Add-Check "Certificate" ((Test-Path "certs\localhost.pem") -and (Test-Path "certs\localhost-key.pem")) "certs\localhost.pem"
+Add-Check "PhoneRootCA" (Test-Path "certs\miaoji-root-ca.cer") "certs\miaoji-root-ca.cer"
 Add-Check "LAN IP" ($lanIp -ne "127.0.0.1") $lanIp
 Add-Check "ModelCache" (Test-Path $cacheDir) $cacheDir
 

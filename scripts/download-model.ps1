@@ -1,7 +1,11 @@
 param(
   [string]$Model = "paraformer-zh-streaming",
   [string]$Revision = "v2.0.4",
-  [string]$Device = "cpu"
+  [string]$Device = "cpu",
+  [switch]$Refine,
+  [string]$RefineModel = "paraformer-zh",
+  [string]$VadModel = "fsmn-vad",
+  [string]$PuncModel = "ct-punc"
 )
 
 . "$PSScriptRoot\common.ps1"
@@ -24,13 +28,24 @@ Write-Host "Cache:    $cacheDir"
 $code = @"
 from funasr import AutoModel
 
-model = AutoModel(
+streaming_model = AutoModel(
     model="$Model",
     model_revision="$Revision",
     disable_update=True,
     device="$Device",
 )
-print("FunASR model is ready.")
+print("FunASR streaming model is ready.")
+
+if "$Refine".lower() == "true":
+    refine_model = AutoModel(
+        model="$RefineModel",
+        model_revision="$Revision",
+        vad_model="$VadModel",
+        punc_model="$PuncModel",
+        disable_update=True,
+        device="$Device",
+    )
+    print("FunASR offline refine model is ready.")
 "@
 
 $tempFile = Join-Path $env:TEMP "miaoji_download_model.py"

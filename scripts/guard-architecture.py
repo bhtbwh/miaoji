@@ -12,7 +12,9 @@ REQUIRED_PATHS = [
     "docs/ROADMAP.md",
     "server/app.py",
     "server/asr.py",
+    "server/refine.py",
     "server/storage.py",
+    "server/transcript.py",
     "web/index.html",
     "web/app.js",
     "web/manifest.webmanifest",
@@ -20,6 +22,7 @@ REQUIRED_PATHS = [
     "scripts/first-run.ps1",
     "scripts/download-model.ps1",
     "scripts/start.ps1",
+    "scripts/start-cert-download.ps1",
     "scripts/check-env.ps1",
     "tests/test_core_flow.py",
 ]

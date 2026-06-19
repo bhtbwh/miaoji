@@ -9,6 +9,9 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
+from server.asr import TranscriptUpdate
+from server.transcript import TranscriptAssembler, merge_fragment
+
 
 class CoreFlowTest(unittest.TestCase):
     def test_mock_recording_flow(self) -> None:
@@ -40,9 +43,13 @@ class CoreFlowTest(unittest.TestCase):
                 websocket.send_bytes(pcm_second)
                 update = websocket.receive_json()
                 self.assertEqual(update["type"], "transcript")
-                self.assertIn("已收到 1 秒音频", update["segment"]["text"])
+                self.assertIn("已收到1秒音频", update["segment"]["text"])
 
                 websocket.send_text(json.dumps({"type": "stop"}))
+                finished = websocket.receive_json()
+                if finished["type"] == "transcript":
+                    finished = websocket.receive_json()
+                self.assertEqual(finished["type"], "meeting_finished")
 
             meeting_dir = Path(temp_dir) / meeting_id
             self.assertTrue((meeting_dir / "audio.wav").exists())
@@ -53,6 +60,20 @@ class CoreFlowTest(unittest.TestCase):
             self.assertEqual(saved["title"], "test")
             self.assertEqual(saved["duration_seconds"], 1)
             self.assertGreaterEqual(len(saved["transcript"]), 1)
+
+    def test_streaming_fragments_are_assembled(self) -> None:
+        class SettingsStub:
+            transcript_min_chars = 8
+            transcript_max_chars = 40
+
+        assembler = TranscriptAssembler(SettingsStub())  # type: ignore[arg-type]
+        updates = []
+        updates.extend(assembler.accept(TranscriptUpdate("今天我们", False, 1.0)))
+        updates.extend(assembler.accept(TranscriptUpdate("今天我们讨论一下项目进度。", False, 2.0)))
+
+        self.assertEqual(updates[-1].text, "今天我们讨论一下项目进度。")
+        self.assertTrue(updates[-1].is_final)
+        self.assertEqual(merge_fragment("今天我们讨论", "讨论一下"), "今天我们讨论一下")
 
 
 if __name__ == "__main__":

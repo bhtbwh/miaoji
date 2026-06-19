@@ -2,6 +2,11 @@ __pycache__/
 *.pyc
 .venv/
 certs/
+logs/
+web/*.cer
+web/*.crt
+web/*.pem
 data/meetings/*
 !data/meetings/.gitkeep
 data/modelscope_cache/
+data/public-cert/

@@ -12,7 +12,9 @@ from fastapi.staticfiles import StaticFiles
 
 from .asr import TranscriptUpdate, create_transcriber
 from .config import Settings, get_settings
+from .refine import OfflineTranscriptRefiner
 from .storage import MeetingAudioWriter, MeetingRecord, MeetingStore, TranscriptSegment
+from .transcript import TranscriptAssembler
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -58,6 +60,29 @@ def export_transcript(meeting_id: str) -> FileResponse:
     return FileResponse(transcript_path, media_type="text/markdown; charset=utf-8")
 
 
+@app.post("/api/meetings/{meeting_id}/refine-transcript")
+async def refine_transcript(meeting_id: str) -> dict[str, object]:
+    try:
+        record = store.get_meeting(meeting_id)
+    except FileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail="Meeting not found") from exc
+
+    audio_path = store.audio_path(meeting_id)
+    if not audio_path.exists():
+        raise HTTPException(status_code=404, detail="Audio not found")
+
+    refiner = OfflineTranscriptRefiner(settings)
+    segments = await asyncio.to_thread(refiner.refine, audio_path)
+    if not segments:
+        raise HTTPException(status_code=422, detail="No speech recognized")
+
+    record.transcript = segments
+    record.status = "finished"
+    store.save(record)
+    write_transcript_text(record)
+    return {"ok": True, "meeting_id": meeting_id, "segments": len(segments)}
+
+
 @app.websocket("/ws/record")
 async def record_audio(websocket: WebSocket) -> None:
     await websocket.accept()
@@ -73,6 +98,8 @@ async def record_audio(websocket: WebSocket) -> None:
         await websocket.send_json({"type": "error", "message": f"ASR 初始化失败：{exc}"})
         await websocket.close(code=1011)
         return
+
+    assembler = TranscriptAssembler(settings)
 
     await websocket.send_json(
         {
@@ -96,17 +123,15 @@ async def record_audio(websocket: WebSocket) -> None:
                 is_final=update.is_final,
                 timestamp=update.timestamp,
             )
-            record.transcript.append(segment)
-            record.duration_seconds = writer.duration_seconds
-            store.save(record)
-            store.transcript_path(record.id).write_text(
-                "\n".join(item.text for item in record.transcript if item.text).strip() + "\n",
-                encoding="utf-8",
-            )
+            if update.is_final:
+                record.transcript.append(segment)
+                record.duration_seconds = writer.duration_seconds
+                store.save(record)
+                write_transcript_text(record)
             return segment
 
-    async def handle_updates(updates: list[TranscriptUpdate]) -> None:
-        for update in updates:
+    async def handle_updates(updates: list[TranscriptUpdate], force: bool = False) -> None:
+        for update in assembler.accept_many(updates, force=force):
             segment = await persist_update(update)
             await websocket.send_json(
                 {
@@ -135,13 +160,18 @@ async def record_audio(websocket: WebSocket) -> None:
         logger.info("Recorder websocket stopped: %s", record.id)
     except WebSocketDisconnect:
         logger.info("Recorder websocket disconnected: %s", record.id)
+    except RuntimeError as exc:
+        if "disconnect message" in str(exc):
+            logger.info("Recorder websocket disconnected: %s", record.id)
+        else:
+            raise
     except Exception:
         logger.exception("Recorder websocket failed")
         with suppress(RuntimeError):
             await websocket.send_json({"type": "error", "message": "录音连接异常，已尽量保存当前内容。"})
     finally:
         with suppress(Exception):
-            await handle_updates(await transcriber.close())
+            await handle_updates(await transcriber.close(), force=True)
         writer.close()
         record.status = "finished"
         record.duration_seconds = writer.duration_seconds
@@ -163,8 +193,15 @@ async def _handle_text_message(text: str, transcriber, handle_updates) -> None:
         return
 
     if event.get("type") == "stop":
-        await handle_updates(await transcriber.close())
+        await handle_updates(await transcriber.close(), force=True)
         raise StopRecording()
+
+
+def write_transcript_text(record: MeetingRecord) -> None:
+    store.transcript_path(record.id).write_text(
+        "\n".join(item.text for item in record.transcript if item.text).strip() + "\n",
+        encoding="utf-8",
+    )
 
 
 @app.exception_handler(404)

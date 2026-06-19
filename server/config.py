@@ -16,11 +16,17 @@ class Settings:
     static_dir: Path = ROOT_DIR / "web"
     asr_model: str = "paraformer-zh-streaming"
     asr_revision: str = "v2.0.4"
-    asr_chunk_size: tuple[int, int, int] = (0, 10, 5)
-    asr_encoder_chunk_look_back: int = 4
-    asr_decoder_chunk_look_back: int = 1
+    asr_chunk_size: tuple[int, int, int] = (0, 16, 8)
+    asr_encoder_chunk_look_back: int = 8
+    asr_decoder_chunk_look_back: int = 2
     asr_disable_update: bool = True
     asr_device: str = "cpu"
+    transcript_min_chars: int = 18
+    transcript_max_chars: int = 80
+    refine_asr_model: str = "paraformer-zh"
+    refine_asr_revision: str = "v2.0.4"
+    refine_vad_model: str = "fsmn-vad"
+    refine_punc_model: str = "ct-punc"
     mock_asr: bool = False
 
 
@@ -35,5 +41,11 @@ def get_settings() -> Settings:
         asr_model=os.getenv("MIAOJI_ASR_MODEL", "paraformer-zh-streaming"),
         asr_revision=os.getenv("MIAOJI_ASR_REVISION", "v2.0.4"),
         asr_device=os.getenv("MIAOJI_ASR_DEVICE", "cpu"),
+        transcript_min_chars=int(os.getenv("MIAOJI_TRANSCRIPT_MIN_CHARS", "18")),
+        transcript_max_chars=int(os.getenv("MIAOJI_TRANSCRIPT_MAX_CHARS", "80")),
+        refine_asr_model=os.getenv("MIAOJI_REFINE_ASR_MODEL", "paraformer-zh"),
+        refine_asr_revision=os.getenv("MIAOJI_REFINE_ASR_REVISION", "v2.0.4"),
+        refine_vad_model=os.getenv("MIAOJI_REFINE_VAD_MODEL", "fsmn-vad"),
+        refine_punc_model=os.getenv("MIAOJI_REFINE_PUNC_MODEL", "ct-punc"),
         mock_asr=os.getenv("MIAOJI_MOCK_ASR", "").lower() in {"1", "true", "yes", "on"},
     )

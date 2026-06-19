@@ -14,15 +14,16 @@ $python = Get-ProjectPython -Root $root
 $lanIp = Get-LanIPv4
 $certFile = "certs\localhost.pem"
 $keyFile = "certs\localhost-key.pem"
+$rootCaFile = "certs\miaoji-root-ca.cer"
 $useHttps = -not $Http
 
-if ($useHttps -and ((-not (Test-Path $certFile)) -or (-not (Test-Path $keyFile)))) {
+if ($useHttps -and ((-not (Test-Path $certFile)) -or (-not (Test-Path $keyFile)) -or (-not (Test-Path $rootCaFile)))) {
   $hasOpenSsl = Test-CommandAvailable -Name "openssl"
   if (-not $hasOpenSsl) {
     Write-Host "openssl was not found. Starting with HTTP; phone microphone access may fail."
     $useHttps = $false
   } else {
-    Write-Host "Certificate missing. Generating a self-signed certificate for $lanIp..."
+    Write-Host "Certificate missing. Generating a local root CA and HTTPS certificate for $lanIp..."
     & "$PSScriptRoot\create-local-cert.ps1" -IpAddress $lanIp
   }
 }
