@@ -23,11 +23,18 @@
 
 ## 新电脑快速开始
 
+下面所有命令都可以在刚打开的 PowerShell 里直接运行，默认项目目录是：
+
+```powershell
+$HOME\Documents\秒记
+```
+
+如果你把项目放到了别的位置，把命令里的 `$HOME\Documents\秒记` 换成实际路径即可。
+
 把项目复制到新电脑后，真实转写的一键首次运行是：
 
 ```powershell
-cd 秒记
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\first-run.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\first-run.ps1"
 ```
 
 它会做这些事：
@@ -41,13 +48,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\first-run.ps1
 如果只是先验证页面、手机访问、麦克风权限，不下载真实模型：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\first-run.ps1 -Mock
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\first-run.ps1" -Mock
 ```
 
 如果只想安装依赖，不启动：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\setup-windows.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\setup-windows.ps1"
 ```
 
 脚本会打印两个地址：
@@ -60,7 +67,7 @@ Phone URL:   https://<电脑局域网IP>:8765
 后续日常使用，真实转写启动：
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
 ```
 
 网络或模型缓存不稳定时，先用 `first-run.ps1 -Mock` 跑通页面和手机录音权限。
@@ -68,7 +75,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start.ps1
 ## 环境自检
 
 ```powershell
-.\scripts\check-env.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\check-env.ps1"
 ```
 
 会检查：
@@ -88,19 +95,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File scripts\start.ps1
 HTTP：
 
 ```powershell
-.\scripts\start.ps1 -Http
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1" -Http
 ```
 
 HTTPS：
 
 ```powershell
-.\scripts\start.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
 ```
 
 另一个不依赖麦克风权限的链路测试：
 
 ```powershell
-python scripts\smoke-ws.py "ws://127.0.0.1:8765/ws/record?title=smoke" 10
+& "$HOME\Documents\秒记\.venv\Scripts\python.exe" "$HOME\Documents\秒记\scripts\smoke-ws.py" "ws://127.0.0.1:8765/ws/record?title=smoke" 10
 ```
 
 这个脚本会生成 16k PCM 音频流，直接打到 WebSocket。做 2 小时稳定性压测时，把最后的秒数改成 `7200`。
@@ -112,13 +119,13 @@ python scripts\smoke-ws.py "ws://127.0.0.1:8765/ws/record?title=smoke" 10
 如果电脑 IP 改了，重新生成证书：
 
 ```powershell
-.\scripts\create-local-cert.ps1 -IpAddress 192.168.1.23
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\create-local-cert.ps1" -IpAddress 192.168.1.23
 ```
 
 用 HTTPS 启动：
 
 ```powershell
-.\scripts\start.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
 ```
 
 手机浏览器打开：
@@ -151,7 +158,7 @@ https://192.168.1.23:8765
 $env:MIAOJI_ASR_DEVICE = "cpu"
 $env:MIAOJI_ASR_MODEL = "paraformer-zh-streaming"
 $env:MIAOJI_ASR_REVISION = "v2.0.4"
-.\scripts\run-dev.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\run-dev.ps1"
 ```
 
 AMD 显卡环境先建议 CPU 跑通稳定性。后面若要尝试 DirectML/ROCm，需要单独评估 PyTorch 和 FunASR 兼容性。
@@ -167,7 +174,7 @@ $env:MIAOJI_SUMMARY_MODEL = "doubao-seed-2.0-lite"
 $env:MIAOJI_SUMMARY_API_KEY = "<你的本机 API Key>"
 $env:MIAOJI_SUMMARY_INTERVAL_SECONDS = "15"
 $env:MIAOJI_SUMMARY_MIN_NEW_CHARS = "80"
-.\scripts\start.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
 ```
 
 密钥只从本机环境变量读取，不要写进仓库、脚本或日志。
@@ -199,14 +206,14 @@ $env:MIAOJI_SUMMARY_MIN_NEW_CHARS = "80"
 
 ```powershell
 $env:MIAOJI_DIARIZATION_MOCK = "1"
-.\scripts\start.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
 ```
 
 真实命令按本机 3D-Speaker 安装位置配置：
 
 ```powershell
 $env:MIAOJI_DIARIZATION_COMMAND = "python C:\path\to\3D-Speaker\speakerlab\bin\infer_diarization.py --wav {wav} --out_dir {out_dir}"
-.\scripts\start.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\start.ps1"
 ```
 
 ## 防漂移验证
@@ -214,13 +221,7 @@ $env:MIAOJI_DIARIZATION_COMMAND = "python C:\path\to\3D-Speaker\speakerlab\bin\i
 每次改动后运行：
 
 ```powershell
-.\scripts\verify.ps1
-```
-
-如果系统禁止运行脚本：
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File scripts\verify.ps1
+powershell -NoProfile -ExecutionPolicy Bypass -File "$HOME\Documents\秒记\scripts\verify.ps1"
 ```
 
 它会执行：
